@@ -232,6 +232,9 @@ type Result struct {
 	ExpiresOn     time.Time
 	// FromCache reports that no network call was needed.
 	FromCache bool
+	// DiscardedCache reports that an unreadable token cache was thrown away so
+	// this sign-in could start a new session.
+	DiscardedCache bool
 }
 
 // LoginOptions configures Login.
@@ -274,12 +277,20 @@ func (c *Client) Login(ctx context.Context, opts LoginOptions) (Result, error) {
 	if len(scopes) == 0 {
 		scopes = c.eff.Scopes
 	}
+	discarded, err := c.discardUnreadableCache(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	markDiscarded := func(res Result, err error) (Result, error) {
+		res.DiscardedCache = discarded
+		return res, err
+	}
 	if opts.Device {
 		res, err := c.loginDevice(ctx, scopes, opts)
 		if err != nil {
 			return Result{}, Classify(err, c.eff.Name)
 		}
-		return res, nil
+		return markDiscarded(res, nil)
 	}
 	if !opts.Interactive {
 		return Result{}, output.WithHint(output.Usagef("no terminal for an interactive sign-in"),
@@ -295,7 +306,7 @@ func (c *Client) Login(ctx context.Context, opts LoginOptions) (Result, error) {
 	}
 	res, err := c.loginInteractive(ctx, scopes)
 	if err == nil {
-		return res, nil
+		return markDiscarded(res, nil)
 	}
 	if !IsRedirectURIError(err) {
 		return Result{}, Classify(err, c.eff.Name)
@@ -308,7 +319,34 @@ func (c *Client) Login(ctx context.Context, opts LoginOptions) (Result, error) {
 	if devErr != nil {
 		return Result{}, Classify(devErr, c.eff.Name)
 	}
-	return res, nil
+	return markDiscarded(res, nil)
+}
+
+// discardUnreadableCache throws away a token cache this machine cannot decrypt,
+// so a sign-in can start over.
+//
+// The recovery has to happen *before* the flow: MSAL reads the cache before it
+// writes it (refs/msal-go/apps/internal/base/base.go:545-573), so a store that
+// refuses to read would fail the acquisition before any write could replace the
+// bytes. Only an explicit `auth login` does this — a read keeps failing with the
+// clear error — and the cache being discarded was unrecoverable anyway, because
+// the key that decrypts it is not in this machine's keychain.
+func (c *Client) discardUnreadableCache(ctx context.Context) (bool, error) {
+	if c.store == nil || c.Static() {
+		return false, nil
+	}
+	if _, err := c.store.Read(ctx); err == nil {
+		return false, nil
+	} else if !errors.Is(err, tokenstore.ErrKeyMissing) {
+		return false, err
+	}
+	if err := c.store.Delete(ctx); err != nil {
+		return false, fmt.Errorf("discard the unreadable token cache: %w", err)
+	}
+	c.mu.Lock()
+	c.cached = nil
+	c.mu.Unlock()
+	return true, nil
 }
 
 func (c *Client) loginInteractive(ctx context.Context, scopes []string) (Result, error) {

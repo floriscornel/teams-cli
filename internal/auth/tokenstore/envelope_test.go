@@ -33,7 +33,7 @@ func (f *fakeKeyring) Get(service, user string) (string, error) {
 	}
 	v, ok := f.items[f.key(service, user)]
 	if !ok {
-		return "", errNotFound
+		return "", ErrNotFound
 	}
 	return v, nil
 }
@@ -58,6 +58,10 @@ func (f *fakeKeyring) Delete(service, user string) error {
 
 func newEnvelope(t *testing.T, kr Keyring) (*Envelope, string, string) {
 	t.Helper()
+	// These tests drive a fake keyring, so the process-wide guard that keeps
+	// tests away from the real OS keychain (see keyring_guard_test.go) must be
+	// off; the store never reaches the system keyring here anyway.
+	t.Setenv(EnvNoKeychain, "")
 	dir := t.TempDir()
 	cipherPath := filepath.Join(dir, "token.bin")
 	plainPath := filepath.Join(dir, "token.json")
@@ -166,10 +170,11 @@ func TestEnvelopeWriteCreatesTheKeyOnce(t *testing.T) {
 }
 
 func TestEnvelopeNoKeychainEnvForcesTheFallback(t *testing.T) {
-	t.Setenv(EnvNoKeychain, "1")
 	ctx := context.Background()
 	kr := newFakeKeyring()
 	e, cipherPath, plainPath := newEnvelope(t, kr)
+	// Set after construction: the store reads the variable when it probes.
+	t.Setenv(EnvNoKeychain, "1")
 	if err := e.Probe(); err != nil {
 		t.Fatal(err)
 	}
@@ -258,6 +263,7 @@ func TestEnvelopeFallsBackWithoutKeychain(t *testing.T) {
 // reopen simulates the next CLI invocation: same paths, same keychain.
 func reopen(t *testing.T, cipherPath, plainPath string, kr Keyring) *Envelope {
 	t.Helper()
+	t.Setenv(EnvNoKeychain, "")
 	e, err := NewEnvelope(cipherPath, plainPath, "me:token-key", kr)
 	if err != nil {
 		t.Fatal(err)
@@ -319,31 +325,38 @@ func TestEnvelopeTruncatedCiphertextIsRejected(t *testing.T) {
 func TestEnvelopeMalformedKeyIsRejected(t *testing.T) {
 	ctx := context.Background()
 	kr := newFakeKeyring()
-	e, _, _ := newEnvelope(t, kr)
+	e, cipherPath, plainPath := newEnvelope(t, kr)
 	if err := e.Write(ctx, []byte("x")); err != nil {
 		t.Fatal(err)
 	}
-	// A key that becomes unreadable mid-life must fail loudly, not drift into
-	// the plaintext fallback.
+	// The keychain answered, but with something that is not a 32-byte key.
 	kr.items[KeyringService+"/me:token-key"] = "not-base64!!"
-	// A malformed key is never a reason to fall back to plaintext: a fresh store
-	// (a new process) must refuse to write rather than downgrade.
-	fresh, _, _ := newEnvelope(t, kr)
-	writeErr := fresh.Write(ctx, []byte("y"))
-	if writeErr == nil || !strings.Contains(writeErr.Error(), "malformed data key") {
-		t.Fatalf("Write = %v, want a malformed-key error", writeErr)
-	}
-	if !errors.Is(writeErr, ErrKeyMissing) {
-		t.Errorf("Write = %v, want it to wrap ErrKeyMissing", writeErr)
-	}
-	// The already-resolved store keeps using the key it read at the start of the
-	// run, which is why the failure is visible on the next invocation instead.
-	if err := e.Write(ctx, []byte("y")); err != nil {
-		t.Fatalf("Write with a resolved key = %v", err)
-	}
-	_, readErr := reopen(t, e.path, e.plainPath, kr).Read(ctx)
+
+	// A read must refuse: the ciphertext cannot be decrypted with a key we cannot
+	// parse, and guessing would look like an empty cache.
+	_, readErr := reopen(t, cipherPath, plainPath, kr).Read(ctx)
 	if readErr == nil || !strings.Contains(readErr.Error(), "malformed data key") {
 		t.Fatalf("Read = %v, want a malformed-key error", readErr)
+	}
+	if !errors.Is(readErr, ErrKeyMissing) {
+		t.Errorf("Read = %v, want it to wrap ErrKeyMissing", readErr)
+	}
+
+	// A write is an explicit new session: it replaces the unusable key and says
+	// so, so a user is never locked out of `auth login`.
+	fresh := reopen(t, cipherPath, plainPath, kr)
+	if err := fresh.Write(ctx, []byte("y")); err != nil {
+		t.Fatalf("Write = %v, want the recovery path to succeed", err)
+	}
+	if !strings.Contains(fresh.Warning(), "new session") {
+		t.Errorf("Warning = %q", fresh.Warning())
+	}
+	if kr.items[KeyringService+"/me:token-key"] == "not-base64!!" {
+		t.Error("the malformed key was not replaced")
+	}
+	got, err := reopen(t, cipherPath, plainPath, kr).Read(ctx)
+	if err != nil || string(got) != "y" {
+		t.Fatalf("Read after recovery = (%q, %v)", got, err)
 	}
 }
 
@@ -377,6 +390,8 @@ func TestEnvelopeKeyIsPerProfile(t *testing.T) {
 	ctx := context.Background()
 	kr := newFakeKeyring()
 	dir := t.TempDir()
+	// A fake keyring: the process-wide guard is off for this test on purpose.
+	t.Setenv(EnvNoKeychain, "")
 	a, err := NewEnvelope(filepath.Join(dir, "a.bin"), filepath.Join(dir, "a.json"), "me:token-key", kr)
 	if err != nil {
 		t.Fatal(err)
@@ -431,6 +446,66 @@ func TestEnvelopeReadMissingFileIsNotAnError(t *testing.T) {
 	}
 	if !e.Empty() {
 		t.Error("reading an empty store created state")
+	}
+}
+
+func TestEnvelopeWriteRecoversFromALostKey(t *testing.T) {
+	// The user-visible recovery path: a cache whose key is gone must not lock a
+	// profile out of `auth login` forever, and it must not do so silently.
+	ctx := context.Background()
+	kr := newFakeKeyring()
+	e, cipherPath, _ := newEnvelope(t, kr)
+	if err := e.Write(ctx, []byte("old session")); err != nil {
+		t.Fatal(err)
+	}
+	oldKey := kr.items[KeyringService+"/me:token-key"]
+	kr.items = map[string]string{} // a keychain reset, a restored backup, ...
+
+	// Reading still refuses: the bytes cannot be decrypted and pretending
+	// otherwise would look like an empty cache.
+	if _, err := reopen(t, cipherPath, e.plainPath, kr).Read(ctx); !errors.Is(err, ErrKeyMissing) {
+		t.Fatalf("Read = %v, want ErrKeyMissing", err)
+	}
+
+	// Writing starts a new session with a fresh key.
+	fresh := reopen(t, cipherPath, e.plainPath, kr)
+	if err := fresh.Write(ctx, []byte("new session")); err != nil {
+		t.Fatalf("Write = %v, want the recovery path to succeed", err)
+	}
+	if fresh.Warning() == "" || !strings.Contains(fresh.Warning(), "new session") {
+		t.Errorf("Warning = %q, want it to say a new session started", fresh.Warning())
+	}
+	if kr.items[KeyringService+"/me:token-key"] == oldKey {
+		t.Error("the recovery reused the lost key")
+	}
+	got, err := reopen(t, cipherPath, e.plainPath, kr).Read(ctx)
+	if err != nil || string(got) != "new session" {
+		t.Fatalf("Read after recovery = (%q, %v)", got, err)
+	}
+}
+
+func TestEnvelopeWriteFallsBackWhenNoNewKeyCanBeStored(t *testing.T) {
+	// A keychain that answered once and can no longer store anything: the write
+	// must still work, in the plaintext file, with the reason in Warning.
+	ctx := context.Background()
+	kr := newFakeKeyring()
+	e, cipherPath, plainPath := newEnvelope(t, kr)
+	if err := e.Write(ctx, []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	kr.items = map[string]string{}
+	kr.setErr = errors.New("keychain locked")
+
+	fresh := reopen(t, cipherPath, plainPath, kr)
+	if err := fresh.Write(ctx, []byte("new")); err != nil {
+		t.Fatalf("Write = %v, want it to fall back to the plaintext file", err)
+	}
+	raw, err := os.ReadFile(plainPath)
+	if err != nil || string(raw) != "new" {
+		t.Fatalf("plaintext file = (%q, %v)", raw, err)
+	}
+	if !strings.Contains(fresh.Warning(), "keychain") {
+		t.Errorf("Warning = %q", fresh.Warning())
 	}
 }
 

@@ -95,8 +95,12 @@ func (e *Envelope) Probe() error {
 	case e.CiphertextExists():
 		// The ciphertext is there but its key is not (a keychain reset, another
 		// machine, a deleted item): that is a re-login, never a plaintext
-		// downgrade.
-		e.keyErr = fmt.Errorf("%w (at %s): %w", ErrKeyMissing, e.path, err)
+		// downgrade. A read cannot do anything with these bytes.
+		cause := err
+		if cause == nil {
+			cause = errors.New("the keychain has no item for this profile")
+		}
+		e.keyErr = fmt.Errorf("%w (at %s): %w", ErrKeyMissing, e.path, cause)
 	case err != nil:
 		e.degrade(err)
 	default:
@@ -208,6 +212,9 @@ func (e *Envelope) Read(ctx context.Context) ([]byte, error) {
 // Write implements Store. This is the only path that may create a keychain item,
 // because a write means there is real token material to protect.
 func (e *Envelope) Write(ctx context.Context, data []byte) error {
+	if err := e.startFreshSessionIfNeeded(); err != nil {
+		return err
+	}
 	if err := e.Probe(); err != nil {
 		return err
 	}
@@ -259,7 +266,7 @@ func (e *Envelope) Delete(ctx context.Context) error {
 	if err := store.RemoveIfExists(e.path); err != nil {
 		return err
 	}
-	if err := e.keyring.Delete(KeyringService, e.user); err != nil && !errors.Is(err, errNotFound) {
+	if err := e.keyring.Delete(KeyringService, e.user); err != nil && !errors.Is(err, ErrNotFound) {
 		if e.warning == "" {
 			e.warning = fmt.Sprintf("the cached tokens are deleted, but the data key could not be removed from the OS keychain (%v); remove the %q item for %q by hand if you want it gone",
 				err, KeyringService, e.user)
@@ -280,20 +287,53 @@ func (e *Envelope) aead(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
-// errNotFound mirrors keyring.ErrNotFound without importing the concrete
-// implementation here.
-var errNotFound = errors.New("secret not found in keyring")
+// ErrNotFound is what a Keyring implementation must return when it has no item
+// for a profile. It is exported because the envelope store has to tell "no key
+// yet" (mint one on write) apart from "the keychain is unreachable" (fall back to
+// the plaintext file), and any Keyring implementation — the OS one, a fake in a
+// test, a future platform backend — has to be able to say which it is.
+var ErrNotFound = errors.New("no such item in the keyring")
 
 // errMalformedKey means the keychain answered, but with something that is not a
 // 32-byte data key: a corrupted item, or an item another program wrote.
 var errMalformedKey = errors.New("the keychain holds a malformed data key")
+
+// startFreshSessionIfNeeded lets a write recover from a cache whose key is gone
+// or unusable (a keychain reset, a restored backup, a deleted item, my own test
+// suite: it used to share the keychain item name).
+//
+// A read must keep failing — the bytes are undecryptable, and silently switching
+// to a plaintext store would hide that — but a write is an explicit "start a new
+// session": the old tokens are unreachable anyway, so minting a fresh key and
+// overwriting the ciphertext is the only way a user can get back in without
+// hand-deleting files. The reason is reported through Warning.
+func (e *Envelope) startFreshSessionIfNeeded() error {
+	err := e.Probe()
+	if !errors.Is(err, ErrKeyMissing) {
+		return err
+	}
+	e.keyErr = nil
+	e.key = nil
+	note := fmt.Sprintf("the previous token cache could not be decrypted with the key in your OS keychain, so this is a new session; %s has been overwritten", e.path)
+	if key, keyErr := e.createKey(); keyErr == nil {
+		e.key = key
+		e.warning = note
+	} else {
+		// No keychain to hold a key either: fall back to the plaintext file,
+		// which is what a profile without a keychain uses from the start. Keep
+		// both facts in the warning.
+		e.degrade(keyErr)
+		e.warning = note + "; " + e.warning
+	}
+	return nil
+}
 
 // existingKey reads the data key, returning (nil, nil) when the keychain has no
 // item for this profile yet. It never creates one.
 func (e *Envelope) existingKey() ([]byte, error) {
 	enc, err := e.keyring.Get(KeyringService, e.user)
 	switch {
-	case errors.Is(err, errNotFound):
+	case errors.Is(err, ErrNotFound):
 		return nil, nil
 	case err != nil:
 		return nil, err

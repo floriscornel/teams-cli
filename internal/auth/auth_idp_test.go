@@ -383,6 +383,68 @@ func TestNilHTTPClientFallsBackToTheDefault(t *testing.T) {
 	}
 }
 
+func TestLoginRecoversWhenTheDataKeyIsGone(t *testing.T) {
+	// The exact situation a user hit: the ciphertext is on disk, the keychain no
+	// longer holds its key, and `teams auth login` must be able to start over
+	// rather than repeat "run auth login again" forever.
+	env := newIDPEnv(t, []string{"User.Read"}, 3600)
+	ctx := context.Background()
+	// A fake keychain, so the process-wide guard (auth_guard_test.go) is off for
+	// this one test: the test binary must never touch the real keychain, but this
+	// test needs the envelope path rather than the plaintext fallback.
+	t.Setenv(tokenstore.EnvNoKeychain, "")
+
+	// The envelope store with a fake keychain: this test is about the key, not
+	// about the flows.
+	keyring := &testKeyring{items: map[string]string{}}
+	opts := env.options
+	opts.Store = nil
+	opts.Keyring = keyring
+	opts.Effective.TokenStore = "auto"
+
+	first, err := New(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Login(ctx, LoginOptions{Device: true}); err != nil {
+		t.Fatal(err)
+	}
+	// A keychain reset, a restored backup, or an item someone deleted.
+	keyring.noItems()
+
+	// Reading still fails, with the code and the fix a user needs.
+	blocked, err := New(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, statusErr := blocked.Status(ctx)
+	if output.CodeOf(statusErr) != output.CodeAuth {
+		t.Fatalf("Status = %v, want exit 3", statusErr)
+	}
+	if hint := output.HintOf(statusErr); !strings.Contains(hint, "auth logout") || !strings.Contains(hint, "auth login") {
+		t.Errorf("hint = %q, want it to offer both the new-session and the discard path", hint)
+	}
+
+	// Logging in again replaces the unusable cache and says so.
+	recovered, err := New(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recovered.Login(ctx, LoginOptions{Device: true}); err != nil {
+		t.Fatalf("Login after the key was lost: %v", err)
+	}
+	if w := recovered.Store().Warning(); !strings.Contains(w, "new session") {
+		t.Errorf("store warning = %q, want it to explain the new session", w)
+	}
+	status, err := recovered.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status after recovery: %v", err)
+	}
+	if !status.SignedIn {
+		t.Errorf("status = %+v, want a signed-in session", status)
+	}
+}
+
 func TestBrowserTimeoutExplainsTheRedirectURIFix(t *testing.T) {
 	err := browserTimeoutError()
 	if output.CodeOf(err) != output.CodeAuth {

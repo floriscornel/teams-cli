@@ -63,8 +63,8 @@ func Classify(err error, profile string) error {
 		return err
 	}
 	if errors.Is(err, tokenstore.ErrKeyMissing) {
-		return output.WithHint(output.Authf("the token cache key is gone (profile %s)", profile),
-			"the encryption key lives in your OS keychain; run `teams auth login` again to start over")
+		return output.WithHint(output.Authf("the token cache cannot be decrypted (profile %s)", profile),
+			"the encryption key lives in your OS keychain and is no longer there or no longer matches the cache; run `teams auth login` to start a new session, or `teams auth logout` to discard the old cache first")
 	}
 
 	msg := err.Error()

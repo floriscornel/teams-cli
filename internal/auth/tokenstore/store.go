@@ -24,6 +24,10 @@ import (
 var EmptyCache = []byte("{}")
 
 // Store is a token-cache backend.
+//
+// A Keyring implementation returns ErrNotFound for "no item yet"; any other
+// error means the keychain is unreachable and makes the envelope store fall back
+// to its plaintext file.
 type Store interface {
 	// Read returns the cache bytes, or EmptyCache when nothing is stored yet.
 	Read(ctx context.Context) ([]byte, error)

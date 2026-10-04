@@ -97,8 +97,16 @@ func (a *App) newAuthLoginCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if result.DiscardedCache {
+				a.Printer.Warnf("the previous token cache could not be decrypted with the key in your OS keychain, so it was discarded and this is a new session")
+			}
 			if err := a.rememberAccount(result); err != nil {
 				a.Printer.Warnf("could not record the account in the config file: %v", err)
+			}
+			// The store only learns that it degraded (or that it started a new
+			// session over an undecryptable cache) while writing.
+			if st := client.Store(); st != nil && st.Warning() != "" {
+				a.Printer.Warnf("%s", st.Warning())
 			}
 			if a.Printer.JSONMode() {
 				return a.Printer.JSON(map[string]any{

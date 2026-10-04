@@ -29,6 +29,13 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	// Keep the CLI tests (and the testscript subprocesses) away from the real OS
+	// keychain: the envelope store's keychain item name is fixed, so a test that
+	// reached it could read — or delete — a live data key.
+	if os.Getenv("TEAMS_TEST_ALLOW_KEYCHAIN") == "" {
+		_ = os.Setenv("TEAMS_NO_KEYCHAIN", "1")
+	}
+	// testscript.Main exits the process itself.
 	testscript.Main(m, map[string]func(){
 		"teams": runTeams,
 	})

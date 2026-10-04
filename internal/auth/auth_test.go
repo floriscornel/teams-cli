@@ -27,7 +27,9 @@ func (k *testKeyring) Get(service, user string) (string, error) {
 	if v, ok := k.items[service+"/"+user]; ok {
 		return v, nil
 	}
-	return "", errors.New("not found in keyring")
+	// The documented sentinel: this keychain is reachable and simply has no item
+	// for the profile yet.
+	return "", tokenstore.ErrNotFound
 }
 
 func (k *testKeyring) Set(service, user, secret string) error {
@@ -42,9 +44,15 @@ func (k *testKeyring) Set(service, user, secret string) error {
 }
 
 func (k *testKeyring) Delete(service, user string) error {
+	if k.err != nil {
+		return k.err
+	}
 	delete(k.items, service+"/"+user)
 	return nil
 }
+
+// noItems clears the keychain, simulating a keychain reset or a deleted item.
+func (k *testKeyring) noItems() { k.items = map[string]string{} }
 
 func testOptions(t *testing.T) Options {
 	t.Helper()
