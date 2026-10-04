@@ -159,6 +159,34 @@ review, and PLAN.md defers them past v1.0. Consequences worth knowing:
 - tags with a prerelease indicator (`v1.1.0-rc.1`) become GitHub pre-releases
   through `release.prerelease: auto`;
 
+#### One publisher per tag
+
+**The workflow is the only publisher, and a re-run repairs rather than
+half-fails.** An asset whose name already exists is a `422` on GitHub, and
+GoReleaser has no "skip existing" mode, so without help a second publisher for
+the same tag fails on every upload — and because that step fails, the two steps
+after it in `release.yml` (`Attest the checksums`, `Upload the SBOMs`) are
+skipped, leaving a *published* release without build provenance. v1.0.0 hit
+exactly this: a local `mise run release` and the workflow for the same tag
+published at the same time, the workflow lost every upload, and its attestation
+never ran. Two guard rails now exist:
+
+- `release.replace_existing_artifacts: true` in `.goreleaser.yaml`
+  (`scm/_index.md`:56-65): GoReleaser deletes the colliding asset and retries, so
+  re-running a release job replaces the artifacts and reaches the attestation
+  step;
+- `mise run release` refuses to run outside CI unless `TEAMS_RELEASE_LOCAL=1` is
+  set, so a local publish has to be deliberate (`mise run snapshot` is the local
+  rehearsal).
+
+Recovering a release that lost its attestation, without re-tagging:
+
+```bash
+gh run rerun <the release run id>          # replaces every asset, then attests
+gh release view vX.Y.Z                     # the assets are back
+gh attestation verify <downloaded archive> --repo floriscornel/teams-cli
+```
+
 #### Cutting the v1.0.0 tag
 
 Everything the tag needs is committed, and the pipeline can be rehearsed locally
