@@ -246,10 +246,13 @@ func (e *Envelope) Write(ctx context.Context, data []byte) error {
 
 // Delete implements Store: it removes the ciphertext and the keychain item, so
 // the next login mints a fresh key instead of reusing a stale one.
+//
+// A keychain item that cannot be removed is reported through Warning rather than
+// as a failure: the ciphertext is gone, so the tokens are unreachable either way,
+// and a locked or unreachable keychain must not make `auth logout` fail. A
+// ProfileNotFound key can happen whenever the environment has no keychain at all,
+// which is exactly where a plaintext fallback would have been used.
 func (e *Envelope) Delete(ctx context.Context) error {
-	if err := e.Probe(); err != nil {
-		return err
-	}
 	if e.fallback != nil {
 		return e.fallback.Delete(ctx)
 	}
@@ -257,7 +260,10 @@ func (e *Envelope) Delete(ctx context.Context) error {
 		return err
 	}
 	if err := e.keyring.Delete(KeyringService, e.user); err != nil && !errors.Is(err, errNotFound) {
-		return fmt.Errorf("delete the data key from the keychain: %w", err)
+		if e.warning == "" {
+			e.warning = fmt.Sprintf("the cached tokens are deleted, but the data key could not be removed from the OS keychain (%v); remove the %q item for %q by hand if you want it gone",
+				err, KeyringService, e.user)
+		}
 	}
 	return nil
 }

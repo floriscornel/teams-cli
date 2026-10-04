@@ -75,7 +75,6 @@ func newAuthEnvWithExpiry(t *testing.T, consented []string, expiresIn int, graph
 		DisableInstanceDiscovery: true,
 		Sleeper:                  func(context.Context, time.Duration) error { return nil },
 	})
-	t.Setenv("TEAMS_NO_KEYCHAIN", "1")
 	return &authEnv{harness: h, idp: idp, graph: graph, calls: &calls}
 }
 

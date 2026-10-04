@@ -129,13 +129,26 @@ func TestDoctorFeatureMatrixListsAvailableCommands(t *testing.T) {
 		t.Fatalf("doctor output lacks the feature rows:\n%s", out)
 	}
 	checks := doctorRows(t, h.mustRun("doctor", "--offline", "--json"))
-	available, ok := findCheck(checks, "features available")
+	summary, ok := findCheck(checks, "features available")
 	if !ok {
 		t.Fatalf("no feature check in %+v", checks)
 	}
+	if !strings.Contains(summary.Detail, "of") {
+		t.Errorf("the summary row should count the commands: %s", summary.Detail)
+	}
+	// The long list is behind -v.
+	commands, ok := findCheck(checks, "commands")
+	if ok {
+		t.Fatalf("the command list is printed without -v: %+v", commands)
+	}
+	checks = doctorRows(t, h.mustRun("doctor", "--offline", "--json", "-v"))
+	commands, ok = findCheck(checks, "commands")
+	if !ok {
+		t.Fatalf("no command list in %+v", checks)
+	}
 	for _, want := range []string{"teams whoami", "teams channel read", "teams post <channel>"} {
-		if !strings.Contains(available.Detail, want) {
-			t.Errorf("available features lack %q: %s", want, available.Detail)
+		if !strings.Contains(commands.Detail, want) {
+			t.Errorf("available features lack %q: %s", want, commands.Detail)
 		}
 	}
 	// The only feature no preset unlocks is the incremental one.

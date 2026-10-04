@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -201,7 +202,7 @@ func (a *App) runDoctor(ctx context.Context, offline bool) []doctorCheck {
 	checks = append(checks, authCheck)
 
 	// 5. Feature matrix against the token's scopes.
-	checks = append(checks, a.featureChecks(granted)...)
+	checks = append(checks, a.featureChecks(granted, a.verboseFlag > 0)...)
 
 	// 6. Graph reachability and clock skew (read-only calls).
 	if offline {
@@ -222,7 +223,7 @@ func (a *App) runDoctor(ctx context.Context, offline bool) []doctorCheck {
 // featureChecks reports which Phase 3/4 features the granted scopes unlock. It
 // is the "feature matrix from the token" rule from PLAN.md: `scp` lists every
 // consented scope, so no probing is needed.
-func (a *App) featureChecks(granted []string) []doctorCheck {
+func (a *App) featureChecks(granted []string, verbose bool) []doctorCheck {
 	if len(granted) == 0 {
 		return []doctorCheck{{
 			Name: "scopes", Status: statusWarn,
@@ -237,18 +238,30 @@ func (a *App) featureChecks(granted []string) []doctorCheck {
 			available = append(available, st.Command)
 			continue
 		}
-		missing = append(missing, st.Command+" (needs "+strings.Join(st.Missing, " or ")+")")
+		// one per line: this row is the actionable one, and a comma-joined blob
+		// of ten commands is impossible to read even when it wraps.
+		missing = append(missing, "• "+st.Command+" — needs "+strings.Join(st.Missing, " or "))
 	}
+	// The actionable row comes first and the long list of commands is only
+	// printed with -v (or --json, where the caller asked for everything): a
+	// twelve-line cell in the middle of a diagnostic report buries the warning.
 	checks := []doctorCheck{{
 		Name:   "features available",
 		Status: statusOK,
-		Detail: output.JoinNonEmpty(", ", available...),
+		Detail: fmt.Sprintf("%d of %d commands (run `teams doctor -v` to list them)", len(available), len(statuses)),
 	}}
+	if verbose && len(available) > 0 {
+		checks = append(checks, doctorCheck{
+			Name:   "commands",
+			Status: statusOK,
+			Detail: output.JoinNonEmpty(", ", available...),
+		})
+	}
 	if len(missing) > 0 {
 		checks = append(checks, doctorCheck{
 			Name:   "features not granted",
 			Status: statusWarn,
-			Detail: strings.Join(missing, "; "),
+			Detail: strings.Join(missing, "\n"),
 			Fix:    "consent for the missing scopes is what closes these gaps; run `teams auth status --admin-request` for the ticket",
 		})
 	}

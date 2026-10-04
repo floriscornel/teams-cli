@@ -11,8 +11,11 @@ stderr 'auth login'
 env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBDaGF0LlJlYWQiLCJleHAiOjE4OTM0NTYwMDB9.
 exec teams doctor --offline
 stdout 'features available'
-stdout 'whoami'
 stdout 'skipped \(--offline\)'
+
+# -v adds the full list of commands the current scopes unlock.
+exec teams doctor --offline -v
+stdout 'whoami'
 
 exec teams doctor --offline --json
 stdout '"checks":'

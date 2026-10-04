@@ -2,11 +2,50 @@ package output
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"golang.org/x/term"
 )
+
+// Table width policy. A borderless dump of a long value is how a diagnostic
+// command ends up with a 300-column table, so the styled renderer wraps cells to
+// the terminal instead of running off the screen. The width is derived from the
+// output stream and falls back to defaultTableWidth when it cannot be measured
+// (a pipe, a CI log, a pty-less runner).
+const (
+	defaultTableWidth = 100
+	minTableWidth     = 60
+	tableWidthMargin  = 1
+)
+
+// terminalWidth reports the width of the terminal behind w, or 0.
+func terminalWidth(w io.Writer) int {
+	f, ok := w.(*os.File)
+	if !ok {
+		return 0
+	}
+	width, _, err := term.GetSize(int(f.Fd()))
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
+}
+
+// tableWidth is the width budget for the styled table.
+func tableWidth(w io.Writer) int {
+	width := terminalWidth(w)
+	if width == 0 {
+		return defaultTableWidth
+	}
+	if width -= tableWidthMargin; width < minTableWidth {
+		return minTableWidth
+	}
+	return width
+}
 
 // Table renders a table to stdout: a bordered, styled table on a terminal and
 // tab-separated plain text when piped, so scripts get a stable format without
@@ -28,6 +67,10 @@ func (p *Printer) Table(headers []string, rows [][]string) {
 	}
 	t := table.New().
 		Border(lipgloss.RoundedBorder()).
+		// Wrap instead of truncate: a wrapped cell still shows every value, and
+		// the styled table stays inside the terminal.
+		Wrap(true).
+		Width(tableWidth(p.out)).
 		BorderStyle(lipgloss.NewStyle().Faint(true)).
 		StyleFunc(func(row, _ int) lipgloss.Style {
 			if row == table.HeaderRow {

@@ -117,7 +117,7 @@ func (a *App) newAuthLoginCmd() *cobra.Command {
 				{"expires", output.HumanAge(a.Clock.Now(), result.ExpiresOn) + " (" + result.ExpiresOn.Local().Format("15:04") + ")"},
 				{"store", storeDescription(client)},
 			})
-			a.Printer.Println(a.grantedScopeSummary(result.Scopes))
+			a.Printer.Println(a.grantedScopeSummary(result.Scopes, true))
 			return nil
 		},
 	}
@@ -164,8 +164,13 @@ func storeDescription(client *auth.Client) string {
 
 // grantedScopeSummary lists the granted scopes and points out which presets'
 // scopes are still missing, because the `scp` claim is the whole feature matrix.
-func (a *App) grantedScopeSummary(granted []string) string {
-	parts := []string{"granted scopes: " + strings.Join(sortedCopy(granted), " ")}
+// `includeList` is false where the caller already printed the list, so the
+// comparison is not preceded by a duplicate of itself.
+func (a *App) grantedScopeSummary(granted []string, includeList bool) string {
+	var parts []string
+	if includeList {
+		parts = append(parts, "granted scopes: "+strings.Join(sortedCopy(granted), " "))
+	}
 	for _, preset := range config.Scopes.Names() {
 		missing := config.Scopes.Missing(granted, config.Scopes.Preset(preset))
 		if len(missing) == 0 {
@@ -329,7 +334,7 @@ func (a *App) printStatus(payload statusPayload, status auth.Status) {
 	}
 	if len(payload.GrantedScopes) > 0 {
 		a.Printer.Println()
-		a.Printer.Println(a.grantedScopeSummary(payload.GrantedScopes))
+		a.Printer.Println(a.grantedScopeSummary(payload.GrantedScopes, false))
 	}
 	if !status.SignedIn {
 		a.Printer.Statusf("not signed in: run `teams auth login`")

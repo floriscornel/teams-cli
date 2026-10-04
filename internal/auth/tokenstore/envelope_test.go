@@ -434,12 +434,34 @@ func TestEnvelopeReadMissingFileIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestEnvelopeKeychainDeleteErrorSurfaces(t *testing.T) {
+func TestEnvelopeDeleteReportsAnUnremovableKeyAsAWarning(t *testing.T) {
+	// The ciphertext is the secret; a keychain item that cannot be removed must
+	// not make `auth logout` fail, but it must be reported.
+	ctx := context.Background()
 	kr := newFakeKeyring()
+	e, cipherPath, _ := newEnvelope(t, kr)
+	if err := e.Write(ctx, []byte("data")); err != nil {
+		t.Fatal(err)
+	}
 	kr.deleteErr = errors.New("keychain locked")
-	e, _, _ := newEnvelope(t, kr)
-	if err := e.Delete(context.Background()); err == nil || !strings.Contains(err.Error(), "keychain") {
-		t.Fatalf("Delete = %v, want the keychain error", err)
+	if err := e.Delete(ctx); err != nil {
+		t.Fatalf("Delete = %v, want success with a warning", err)
+	}
+	if _, err := os.Stat(cipherPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the ciphertext survived Delete: %v", err)
+	}
+	if !strings.Contains(e.Warning(), "keychain") {
+		t.Errorf("Warning = %q, want the keychain problem", e.Warning())
+	}
+	if !strings.Contains(e.Warning(), "teams-cli") {
+		t.Errorf("Warning = %q, want it to name the item", e.Warning())
+	}
+	// A second delete is a no-op and must not lose the warning.
+	if err := e.Delete(ctx); err != nil {
+		t.Fatalf("second Delete = %v", err)
+	}
+	if !strings.Contains(e.Warning(), "keychain") {
+		t.Errorf("Warning after a second Delete = %q", e.Warning())
 	}
 }
 

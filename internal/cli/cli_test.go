@@ -43,6 +43,9 @@ func newHarness(t *testing.T) *harness {
 	t.Setenv(store.EnvState, filepath.Join(root, "state"))
 	t.Setenv(store.EnvCache, filepath.Join(root, "cache"))
 	t.Setenv("CI", "true") // non-interactive by default
+	// Tests must never touch the developer's real keychain: the OS dialog for a
+	// missing keychain is blocking, and on CI there is no keychain at all.
+	t.Setenv("TEAMS_NO_KEYCHAIN", "1")
 	h.app = New(strings.NewReader(""), &h.stdout, &h.stderr)
 	h.app.Clock = clock.NewFake(harnessNow)
 	h.applyHooks()
