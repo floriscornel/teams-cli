@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -106,9 +107,21 @@ type Validator struct {
 // The document is fully validated, so a hand-edit that breaks the trimmed copy
 // fails the first contract test rather than producing a confusing 404 from the
 // router.
+//
+// The validator is built once per process and shared: loading means parsing and
+// schema-compiling a 1 MB description, which costs ~0.4 s normally and ~4 s
+// under the race detector, and every contract test used to pay it again. A
+// Validator is read-only after construction (the document and the router are
+// both final), so sharing it across tests — sequential or parallel — is safe.
+var loadValidator = sync.OnceValues(func() (*Validator, error) {
+	return newValidator(trimmedSpecYAML, routesTXT)
+})
+
+// Load returns the shared validator, failing the calling test if the embedded
+// spec cannot be loaded.
 func Load(t testing.TB) *Validator {
 	t.Helper()
-	v, err := newValidator(trimmedSpecYAML, routesTXT)
+	v, err := loadValidator()
 	if err != nil {
 		t.Fatalf("contract: load embedded spec: %v", err)
 	}

@@ -12,7 +12,14 @@
 /dist/
 /teams
 coverage.out
+coverage*.out
 *.test
+
+# mise: tasks, tools and caches live in mise.toml (tracked); local overrides and
+# an optional lock file do not.
+mise.local.toml
+.mise.local.toml
+mise.lock
 
 # Editor / OS noise
 .DS_Store

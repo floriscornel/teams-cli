@@ -10,18 +10,57 @@ the test harness are in place. Read commands land in Phase 3, write commands in
 Phase 4, the bot/headless work in Phase 5 and the AI features in Phase 6.
 [PLAN.md](PLAN.md) is the source of truth for what exists and why.
 
-## Install (development)
+## Install
+
+Releases are published on **GitHub Releases only** — there is no Homebrew cask,
+no Scoop manifest and no distribution package:
+
+```bash
+# build from source
+go install github.com/floriscornel/teams-cli/cmd/teams@latest
+
+# or download an archive for your platform
+gh release download --repo floriscornel/teams-cli --pattern 'teams_*_darwin_arm64.tar.gz'
+```
+
+Every archive is covered by `checksums.txt`, which is signed with cosign keyless
+and has a build-provenance attestation, so a download can be verified:
+
+```bash
+gh attestation verify --owner floriscornel teams_*_darwin_arm64.tar.gz \
+  --repository floriscornel/teams-cli \
+  --signer-workflow floriscornel/teams-cli/.github/workflows/release.yml
+```
+
+## Development
+
+`mise.toml` is the single entry point for humans and CI: every CI step runs a
+task from it, so "works locally" means the same thing as "works in CI".
 
 ```bash
 git clone git@github.com:floriscornel/teams-cli.git
 cd teams-cli
-make build          # bin/teams
+mise trust          # once per clone: tasks in mise.toml execute code
+mise install        # the pinned Go toolchain and golangci-lint
+mise run            # list every task
+mise run build      # bin/teams
 ./bin/teams version
 ```
 
-`make` keeps the Go caches inside the checkout (`.cache/`), so it also works in a
-sandbox that cannot write the global Go cache. Override with
-`GOCACHE=/tmp/gocache make test` if you prefer the global one.
+The tasks keep the Go caches inside the checkout (`.cache/`), so they also work
+in a sandbox that cannot write the global Go cache. Override with
+`GOCACHE=/tmp/gocache mise run test` if you prefer the global one.
+
+```bash
+mise run check        # fmt-check + tidy + lint + cover + contract
+mise run test         # go test -race -shuffle=on ./...
+mise run cover        # the suite once with coverage, then the 80% floor
+mise run contract     # Layer 6 without the race detector (see docs/ci.md)
+mise run docs         # regenerate docs/commands and docs/man
+mise run smoke        # run the built binary through the release smoke checks
+mise run snapshot     # cross-compile the release matrix locally
+mise run refs-check   # verify the vendored reference mirror (needs refs-fetch)
+```
 
 ## Commands (Phase 2)
 
@@ -106,15 +145,9 @@ expiry) but **not** verified or scope-checked.
 
 ## Development
 
-```bash
-make check        # fmt-check + tidy + lint + test + coverage gate
-make test         # go test -race -shuffle=on ./...
-make cover        # coverage profile with the 80% floor on non-excluded code
-make docs         # regenerate docs/commands and docs/man
-make smoke        # run the built binary through the release smoke checks
-make snapshot     # cross-compile the release matrix locally (needs goreleaser)
-make refs-check   # verify the vendored reference mirror (needs it fetched)
-```
+Tasks, versions and the dev loop live in [mise.toml](mise.toml); the list above
+is the short version, and [docs/ci.md](docs/ci.md) covers CI, releases and why
+the suite is shaped the way it is.
 
 The test pyramid is described in [PLAN.md](PLAN.md#automated-testing-strategy-no-real-graph-api-in-ci):
 

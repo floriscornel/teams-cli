@@ -5,7 +5,8 @@
 # misspell, gocritic, revive, forbidigo, depguard; formatters gofumpt and
 # goimports.
 #
-# Local entry point: `make lint` (golangci-lint run ./...), `make fmt-check`.
+# Local entry point: `mise run lint` (golangci-lint config verify + run), and
+# `mise run fmt-check`. The golangci-lint version is pinned in mise.toml.
 # CI entry point: the `lint` job in .github/workflows/ci.yml.
 #
 # v2 note: the v1 `issues.exclude-rules` block is gone. Per-file exclusions now
@@ -113,8 +114,8 @@ linters:
       # Deviation from the literal wording of PLAN.md, deliberate and narrow:
       # PLAN.md says "outside internal/output and cmd/", but this repo's dev
       # tools live at internal/testing/<tool>/main.go (coveragecheck for
-      # `make cover`, gencontract, docgen). They are main packages driven by the
-      # Makefile, they print to stdout by design, and PLAN.md already treats
+      # `mise run cover`, gencontract, docgen). They are main packages driven by
+      # mise tasks, they print to stdout by design, and PLAN.md already treats
       # internal/testing/... as fakes and dev tooling outside the coverage
       # scope. The alternative -- moving each tool under a cmd/ directory -- is
       # a larger change than this config. The ban stays strict for every
@@ -132,9 +133,9 @@ linters:
         path: _test\.go
         text: G101|G302|G304|G703|G705
       # The dev tooling under internal/testing writes generated artifacts and
-      # test fixtures: 0755 directories and 0644 files are what `make docs` and
-      # `make refs-check` produce, and the literal client IDs there are fixtures,
-      # not credentials.
+      # test fixtures: 0755 directories and 0644 files are what `mise run docs`
+      # and `mise run refs-check` produce, and the literal client IDs there are
+      # fixtures, not credentials.
       - linters:
           - gosec
         path: ^internal/testing/

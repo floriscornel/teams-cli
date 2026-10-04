@@ -3,8 +3,8 @@
 // from the CLI.
 //
 // It lives under internal/testing because it is developer tooling, not something
-// a user runs: `make docs` invokes it, and `make docs-check` fails when the
-// generated files are out of date.
+// a user runs: `mise run docs` invokes it, and `mise run docs-check` fails when
+// the generated files are out of date.
 package main
 
 import (

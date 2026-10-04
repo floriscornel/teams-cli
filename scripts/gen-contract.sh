@@ -42,7 +42,7 @@
 # Environment
 # -----------
 # A sandboxed runner cannot write the global Go cache, so the caches default to
-# the checkout, exactly like the Makefile does. Override any of them.
+# the checkout, exactly like mise.toml does. Override any of them.
 #
 # Usage
 # -----
@@ -52,8 +52,10 @@
 #   scripts/gen-contract.sh --stdout     print the trimmed spec to stdout
 #
 # In CI this runs as the `refs-check` job (PLAN.md "CI/CD"), followed by
-# `git diff --exit-code`. The same check also runs as the in-process test
-# TestCommittedArtifactsAreCurrent, which skips when refs/ is absent.
+# `git diff --exit-code`; locally `mise run contract-generate` runs it. The same
+# check also runs as the in-process tests TestCommittedArtifactsAreCurrent and
+# TestGenerateIsDeterministic (skipped under -race, so run `mise run contract`),
+# which skip when refs/ is absent.
 
 set -euo pipefail
 

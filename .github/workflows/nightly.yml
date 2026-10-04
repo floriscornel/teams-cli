@@ -2,7 +2,7 @@
 # (PLAN.md "Workflows" table, row nightly.yml).
 #
 # Three things run here:
-#   1. fuzz      -- `make fuzz-short` with a much longer -fuzztime budget
+#   1. fuzz      -- `mise run fuzz-short` with a much longer -fuzztime budget
 #                   (PLAN.md "CI gates": "a short -fuzztime nightly");
 #   2. spec-drift-- re-runs Layer 6 against the SAME pinned spec SHA. This is
 #                   deliberately not "download the latest spec": the point is to
@@ -11,9 +11,8 @@
 #   3. refs-check-- reuses the job from ci.yml via `workflow_call`, so the
 #                   mirror is verified on a schedule and not only on PRs.
 #
-# There is no `make` target for the contract-only subset of the suite (the
-# Makefile runs everything through `make test`); see docs/ci.md for the
-# follow-up.
+# Every step runs a mise task, like ci.yml (mise.toml is the single entry point;
+# tool versions live there and jdx/mise-action installs them).
 
 name: nightly
 
@@ -33,28 +32,35 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION_FILE: go.mod
+  # keep in step with ci.yml (and mise.toml for the tool versions themselves)
+  # renovate: datasource=github-releases depName=jdx/mise
+  MISE_VERSION: "2026.9.18"
 
 jobs:
   fuzz:
     name: fuzz
     runs-on: ubuntu-latest
-    # 15s x targets locally; 10m each here (the Makefile reads FUZZTIME).
+    # 15s x targets locally; 10m each here (mise.toml reads FUZZTIME).
     timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Install mise (and the pinned tools from mise.toml)
+        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
         with:
-          go-version-file: ${{ env.GO_VERSION_FILE }}
-          cache: true
-          cache-dependency-path: |
-            go.mod
-            go.sum
+          version: ${{ env.MISE_VERSION }}
 
-      # `make fuzz-short` walks every Fuzz* target in cmd/ and internal/ and
+      - name: Cache the Go module and build caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/gopath/pkg/mod
+            .cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      # `mise run fuzz-short` walks every Fuzz* target in cmd/ and internal/ and
       # runs it with `-fuzztime ${FUZZTIME}`. With no fuzz targets yet this is a
       # clean no-op.
       - name: Fuzz every target for 10 minutes
@@ -63,7 +69,7 @@ jobs:
           # Longer runs may find input that crashes a worker; keep the whole
           # corpus so the next run starts warm.
           GOFLAGS: -timeout=30m
-        run: make fuzz-short
+        run: mise run fuzz-short
 
   spec-drift:
     name: spec-drift (Layer 6, pinned spec)
@@ -80,14 +86,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Install mise (and the pinned tools from mise.toml)
+        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
         with:
-          go-version-file: ${{ env.GO_VERSION_FILE }}
-          cache: true
-          cache-dependency-path: |
-            go.mod
-            go.sum
+          version: ${{ env.MISE_VERSION }}
+
+      - name: Cache the Go module and build caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/gopath/pkg/mod
+            .cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
 
       # Note what this job does NOT do: it never fetches refs/ and never
       # resolves a branch tip. The trimmed OpenAPI description and the
@@ -95,14 +106,15 @@ jobs:
       # refs/MANIFEST.md, and `scripts/fetch-refs.sh --update` is the only
       # supported way to move them (reviewed like any other dependency).
       #
-      # Layer 6 validation is part of the normal test suite, so `make test` is
-      # what re-runs it; a spec-drift failure therefore shows up as a test
-      # failure, not as a diff against Microsoft.
+      # `mise run contract` runs the Layer 6 package without the race detector,
+      # which is where the drift shows up: it is a subset of the normal suite,
+      # so this job is cheap and its failures are precise. (The refs/-dependent
+      # generator tests skip here -- they need the mirror, and refs-check is the
+      # job that has it.)
       #
-      # PLAN.md calls this "weekly"; running it nightly is a superset and the
-      # suite is cheap.
+      # PLAN.md calls this "weekly"; running it nightly is a superset.
       - name: Re-run the contract tests against the pinned spec
-        run: make test
+        run: mise run contract
 
       - name: Record the pinned mirror SHAs for the failure report
         if: failure()
@@ -134,9 +146,10 @@ jobs:
             "" \
             "- Run: $RUN_URL" \
             "- Commit: ${{ github.sha }}" \
+            "- Reproduce: \`mise run contract\`" \
             "" \
             "Usual suspects: \`kin-openapi\` (validator changes), the Go toolchain, or" \
-            "the golden files produced by \`scripts/gen-contract.sh\`.")
+            "the golden files produced by \`mise run contract-generate\`.")
           gh issue create --title "$title" --body "$body"
 
   refs-check:

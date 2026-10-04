@@ -306,8 +306,10 @@ There are two different things here, and the plan keeps them apart:
 The GoReleaser docs are mirrored (`refs/goreleaser/www/content/`); cite them like any other ref. Everything below uses **GoReleaser OSS** only. The Pro-only features are called out so that nobody designs around them by accident.
 
 ### Toolchain and local workflow
-- `go.mod` pins the Go version with a `toolchain` line. `iter.Seq2` needs Go ≥ 1.23, and the dev machines run 1.27. CI reads the version from `go.mod` (`actions/setup-go` with `go-version-file`), so there is one source of truth.
-- A `Makefile` (or `mise` tasks) is the single entry point for both humans and CI: `make lint test cover fuzz-short snapshot docs refs-check smoke-live record`. Every CI step runs a make target, so "works locally" means the same thing as "works in CI".
+- `go.mod` pins the Go version with a `go` directive. `iter.Seq2` needs Go ≥ 1.23, and the dev machines run 1.27. `mise.toml` pins the same version for the toolchain mise installs — mise cannot read a plain `go` directive from go.mod (it only reads a `toolchain` line, and go.mod deliberately carries none), so a bump touches both files, and a Renovate rule keeps the `go` bump a reviewed change rather than a routine PR.
+- **`mise.toml` is the single entry point for both humans and CI** (revised 2026-10-04, replacing the Makefile): `mise run lint test cover contract fuzz-short snapshot release docs-check refs-check smoke-live record`. Every CI step runs a mise task, so "works locally" means the same thing as "works in CI".
+  - Why mise and not make: the Windows CI runner ships no `make` (that row used to run `go test` by hand and needed a documented exception), mise installs and pins every tool the workflows need (Go, golangci-lint, GoReleaser, cosign, syft, govulncheck) so the three separate setup actions disappear, it has the same file-target freshness semantics the Makefile had (`sources`/`outputs` on the `build` task), and Renovate has a native `mise` manager that bumps the pins. The two tools every job needs sit under `[tools]`; release-time and scan-time tools are declared on the task that uses them, so `mise install` stays small.
+  - `mise.toml` also keeps the Go caches inside the checkout (`GOPATH`/`GOMODCACHE`/`GOCACHE` under `.cache/`), so a sandboxed runner that cannot write the global cache works unchanged. CI caches those exact paths explicitly (`actions/cache`, keyed on `go.sum`); `actions/setup-go` caches the *global* paths instead, which no task reads.
 - `golangci-lint` v2 with a committed `.golangci.yml`:
   - linters: `errcheck`, `govet`, `staticcheck`, `gosec`, `errorlint`, `bodyclose`, `noctx`, `misspell`, `gocritic`, `revive`, `forbidigo`, `depguard`;
   - formatters: `gofumpt` and `goimports`;
@@ -316,43 +318,39 @@ The GoReleaser docs are mirrored (`refs/goreleaser/www/content/`); cite them lik
 - Use `testscript.Main`, not `RunMain`. `RunMain` is deprecated in go-internal v1.16.0 because Go now collects integration coverage through `GOCOVERDIR`, which testscript passes through to subcommands. Verify on day 1 that testscript-driven CLI code shows up in `-coverprofile`. If it does not, the 80% floor gets measured on the wrong code.
 
 ### Workflows (`.github/workflows/`)
-Every workflow defaults to `permissions: contents: read`, pins third-party actions **by SHA** (Renovate or Dependabot bumps them), and sets `concurrency` to cancel superseded PR runs.
+Every workflow defaults to `permissions: contents: read`, pins third-party actions **by SHA** (Renovate or Dependabot bumps them), sets `concurrency` to cancel superseded PR runs, and installs the pinned tools through `jdx/mise-action` (which also exports `MISE_TRUSTED_CONFIG_PATHS`, so the tasks run without a trust prompt). The only version a workflow pins itself is the mise binary.
 
 | Workflow | Trigger | Jobs |
 |---|---|---|
-| `ci.yml` | PR, push to `main` | **lint** (golangci-lint, `go mod tidy` diff check, `goreleaser check`), **test** (matrix ubuntu/macos/windows: `go test -race -shuffle=on ./...` and testscript), **coverage** (ubuntu: merged profile, 80% gate, upload to Codecov as in the MCP repo), **vuln** (`govulncheck`), **build** (`goreleaser build --snapshot --clean` = the full cross-compile matrix; upload `dist/` as an artifact for the smoke job), **smoke** (installs the snapshot on clean runners without Go), **docs** (regenerate `docs/commands` and man pages, fail on diff), **pr-title** (Conventional Commits, see below) |
-| `release.yml` | tag `v*` | `goreleaser release --clean` → GitHub Release, Homebrew cask, Scoop manifest, (winget PR from v1.0), SBOMs, cosign signature, build-provenance attestation |
-| `nightly.yml` | cron | longer fuzzing (`-fuzztime`), the spec-drift check (Layer 6), and `refs-check` |
-| `refs-check` (job, reused) | PR touching `scripts/fetch-refs.sh`, `refs/INDEX.md` or generated test inputs | fetch the mirror at the pinned SHAs (cached by the hash of `refs/MANIFEST.md`), run `--verify`, regenerate the trimmed OpenAPI subset and the api-reference route list, and fail on diff |
+| `ci.yml` | PR, push to `main` | **lint** (`mise run fmt-check`, `lint` — which validates `.golangci.yml` first — `tidy`, `release-check`), **test** (matrix ubuntu/macos/windows: `mise run test` = `go test -race -shuffle=on ./...` and testscript), **coverage** (`mise run cover`: one suite run with a merged profile, the 80% gate, upload to Codecov as in the MCP repo), **vuln** (`mise run vuln`), **build** (`mise run snapshot` = the full cross-compile matrix; upload `dist/` as an artifact for the smoke job), **smoke** (installs the snapshot on clean runners with no Go, no Node and no mise), **docs** (regenerate `docs/commands` and man pages, fail on diff), **refs-check** (fetch the mirror at the pinned SHAs, verify it, regenerate the Layer 6 inputs, fail on diff), **pr-title** (Conventional Commits, see below) |
+| `release.yml` | tag `v*` | installs mise and runs `mise run release` → `goreleaser release --clean` → GitHub Release with the archives, `checksums.txt`, SBOMs and a cosign keyless signature, then `actions/attest-build-provenance` over the checksum file. **Nothing is published outside this repository** (no cask, no bucket, no winget PR, no deb/rpm/apk) |
+| `nightly.yml` | cron | longer fuzzing (`FUZZTIME=10m mise run fuzz-short`), the spec-drift check (`mise run contract`, i.e. Layer 6 without the race detector), and `refs-check` (reused from `ci.yml` via `workflow_call`) |
 
 **Tests never need `refs/`.** The Layer 6 inputs (the trimmed spec and the route list) are generated from `refs/` but **committed**. Only `refs-check` touches the mirror, so ordinary PR CI stays fast and works offline.
 
 ### Release process
-- **Versioning:** SemVer tags. Use `v0.x` until Phase 7, and set `release.prerelease: auto` so `-rc.N` tags become GitHub pre-releases and skip the package managers (`skip_upload: auto` on casks and Scoop).
+- **Versioning:** SemVer tags. Use `v0.x` until Phase 7, and set `release.prerelease: auto` so `-rc.N` tags become GitHub pre-releases.
 - **Cutting a release:** squash-merge PRs whose titles follow Conventional Commits, which CI enforces. GoReleaser's `changelog.use: github` groups `feat`, `fix` and the rest into the release notes. A maintainer runs `git tag -s vX.Y.Z && git push --tags`. That keeps the process boring and fully local. Add release-please later only if collecting changelog entries by hand becomes a burden.
 - **Version info:** ldflags `-X main.version/commit/date`, with a `debug.ReadBuildInfo()` fallback so `go install` builds report their module version. Builds use `-trimpath` and `mod_timestamp: "{{ .CommitTimestamp }}"`, which makes them reproducible.
-- **Artifacts:** builds for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`. The archives are tar.gz, plus zip for Windows. A `checksums.txt` covers them all.
+- **Artifacts:** builds for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`. The archives are tar.gz, plus zip for Windows, and they carry the binary and the generated man pages. A `checksums.txt` covers them all.
 - **Supply chain**, all OSS:
   - `sboms:` uses syft to write one SBOM per archive;
   - `signs:` uses **cosign keyless** on the checksum file, with GitHub OIDC (`id-token: write`) and `--bundle`;
   - `actions/attest-build-provenance` over `dist/checksums.txt` adds GitHub artifact attestations (`refs/goreleaser/www/content/customization/publish/attestations.md`, with `attestations: write`). Users can verify a download with `gh attestation verify`.
-- **Install channels:**
-  - **Homebrew:** use `homebrew_casks:`. `brews:` (formulas) is **deprecated since GoReleaser v2.10** (`customization/publish/homebrew_formulas.md`). The install command is `brew install --cask floriscornel/tap/teams`.
-    - macOS Gatekeeper puts unsigned cask binaries in quarantine. The OSS answer is **cross-platform notarization** (`notarize.macos` through anchore/quill, `customization/sign/notarize.md`), which works from a Linux runner but needs an Apple Developer ID certificate and an App Store Connect API key, stored as GitHub secrets. The docs also show a post-install `xattr -dr com.apple.quarantine` hook and warn that it "bypasses macOS security". **Decision for v0.x:** document the manual `xattr`. **For v1.0:** notarize, or drop the cask.
-  - **Scoop:** a `scoops:` manifest in a `floriscornel/scoop-bucket` repo.
-  - **winget:** a `winget:` manifest, which opens a PR against `microsoft/winget-pkgs` from a fork. Enable it from v1.0, because every release becomes a review in a Microsoft repo.
-  - **Linux packages:** `nfpms:` builds deb, rpm and apk. The old Microsoft Teams for Linux package shipped a `teams` binary, so give the package `conflicts`/`replaces` only after checking what that package actually installed. Until then, install as `teams` and ship a `teams-cli` symlink.
+  - cosign and syft are not installed by their own pinned actions: they are pinned in `mise.toml` as task tools, together with GoReleaser, so `mise run release` needs nothing else.
+- **Install channels (GitHub Releases only):**
+  - **Download an archive** from the GitHub Release. The release body (`release.header`) says how, so the instructions cannot drift from the artifacts.
   - **`go install github.com/floriscornel/teams-cli/cmd/teams@latest`** works without any extra setup.
-  - **`curl | sh`:** a small `install.sh` that downloads the archive for the platform, **verifies the checksum** (and the cosign bundle when `cosign` is on the PATH), and installs to `~/.local/bin`. It never uses sudo.
-- **Release secrets:** the tap, bucket and winget pushes need a token with write access to *other* repos. Use a GitHub App installation token (`actions/create-github-app-token`) scoped to those repos, not a long-lived PAT. Apple notarization keys live in GitHub encrypted secrets (or Azure Key Vault through OIDC, matching the bot setup). Nothing release-related goes in the repo.
-- **Rollback:** a bad release is yanked by marking it pre-release, reverting the cask/Scoop commit, and shipping a fixed patch tag. Never re-tag.
+  - **Dropped, deliberately:** the Homebrew cask, the Scoop manifest, the winget manifest and the deb/rpm/apk packages. Each publishes to a *second* repository (a tap, a bucket, `microsoft/winget-pkgs`) or asks a distro to accept a package, and each needs its own secrets or review queue. They also dragged in a GitHub App installation token with write access to three repositories, a Gatekeeper/quarantine story for an unsigned macOS binary, and a `teams-cli` symlink to dodge the old Microsoft Teams for Linux package name. GitHub Releases plus `go install` covers macOS and Linux — the platforms this CLI is built for — with none of that. Revisit after v1.0 if there is demand.
+- **Release secrets:** none beyond `CODECOV_TOKEN` (optional, for PR annotations). The automatic `GITHUB_TOKEN` writes the release in this repository and nothing else, so there is no cross-repo token, no PAT and no Apple notarization key.
+- **Rollback:** a bad release is yanked by marking it pre-release and shipping a fixed patch tag. Never re-tag.
 - **Release smoke** (see CI gates): install the snapshot artifacts on clean runners and assert there is no test-only flag.
 
 ### Other dev experience
-- **Binary name:** `teams`. It may collide with the old Linux Teams client binary; the packaging ships `teams-cli` as an alias (see nfpms above).
+- **Binary name:** `teams`. It may collide with the old Linux Teams client binary; with no Linux package there is no `teams-cli` alias to ship any more, so the plain binary name stands and the collision is a documented non-issue.
 - **Update check:** `teams version --check`. It is never automatic in non-interactive mode, and it can be disabled with `TEAMS_NO_UPDATE_CHECK=1` or in config.
 - **Repo hygiene:** CODEOWNERS; branch protection on `main` that requires `ci.yml`; Renovate (or Dependabot) for Go modules and Actions; a `SECURITY.md` with private vulnerability reporting.
-- **Coverage scope:** ≥ 80% statements, matching the MCP's 80 thresholds in [vitest.config.ts](refs/teams-mcp/vitest.config.ts) (which excludes `**/index.ts` and `**/test-utils/**`). The Go equivalent excludes **only** `cmd/teams/main.go` (a 5-line wrapper), `internal/testing/...` (fakes and devserver) and generated code. The exclusion list lives in the Makefile, and any change to it needs review.
+- **Coverage scope:** ≥ 80% statements, matching the MCP's 80 thresholds in [vitest.config.ts](refs/teams-mcp/vitest.config.ts) (which excludes `**/index.ts` and `**/test-utils/**`). The Go equivalent excludes **only** `cmd/teams/main.go` (a 5-line wrapper), `internal/testing/...` (fakes and devserver) and generated code. The exclusion list lives in the `cover` task in `mise.toml`, and any change to it needs review.
 - **Docs:**
   - README quickstart;
   - generated `docs/commands/*.md` and man pages from cobra;
@@ -433,7 +431,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - `auth login/status/logout`, `whoami`;
 - Graph client with retry and paging, output layer;
 - `internal/store` (config/cache/state paths, atomic writes, per-profile isolation) and `teams cache info|clear`, `teams doctor`;
-- **CI/CD from day one:** Makefile, `.golangci.yml`, `ci.yml` (lint, test matrix, coverage gate, govulncheck, snapshot build, smoke), `.goreleaser.yaml`, `release.yml`, Renovate, branch protection — ending in a signed, attested `v0.1.0-rc.1` pre-release with no package-manager publishing yet.
+- **CI/CD from day one:** the dev loop and toolchain config (a Makefile originally, `mise.toml` since the 2026-10-04 revision below), `.golangci.yml`, `ci.yml` (lint, test matrix, coverage gate, govulncheck, snapshot build, smoke), `.goreleaser.yaml`, `release.yml`, Renovate, branch protection — ending in a signed, attested `v0.1.0-rc.1` pre-release with no package-manager publishing yet.
 - **Rule for every later phase:** each new command lands with its fakegraph routes, a testscript script and contract validation in the same PR.
 
 #### What Phase 2 actually shipped, and the decisions it forced
@@ -442,8 +440,13 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - **`cloud = "china"` needs `graph_base_url`.** The mirror documents the China authority but *not* the Graph service root (`refs/entra/docs/identity-platform/authentication-national-cloud.md:81` defers to a page that is not vendored), so the profile must supply it rather than us guessing a host.
 - **The token store's key is created only when tokens are stored.** A first `teams auth status` never touches the OS keychain: probing it on every command cost about a second on macOS, and asking a missing keychain to *create* an item pops a blocking dialog. `TEAMS_NO_KEYCHAIN=1` forces the plaintext file for containers and CI.
 - **`TEAMS_ACCESS_TOKEN` skips the scope pre-check** by design (PLAN.md:105), so the `scp`-based feature matrix is only consulted for real MSAL sessions.
-- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 5 (`token_store = "keyvault://…"` fails with a Phase 5 pointer); `make snapshot` needs GoReleaser installed; the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
+- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 5 (`token_store = "keyvault://…"` fails with a Phase 5 pointer); `mise run snapshot` downloads GoReleaser on first use (it is a task-scoped tool); the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
 - **Three live-tenant items still need a human:** the redirect URI, admin consent, and an app-registration owner (the Phase 1 admin ticket).
+
+#### Revision 2026-10-04 (dev loop and releases)
+- **The Makefile is gone; `mise.toml` is the only entry point.** Every task the Makefile had exists as a mise task, plus `release` (the workflow used to invoke GoReleaser directly because there was no such target) and `contract` (the Layer 6 package on its own, which the nightly drift job now uses instead of the whole suite). Tool versions moved from the workflows into the same file.
+- **Releases are GitHub Releases only.** `homebrew_casks:`, `scoops:`, `nfpms:` and the commented `winget:` block were removed from `.goreleaser.yaml`, along with the GitHub App installation token and the `RELEASE_APP_*` secrets that cross-repo pushes needed. macOS and Linux users install from an archive or with `go install`; Windows binaries stay in the release matrix. `docs/ci.md` records the reasoning.
+- **`mise run check` went from ~5 minutes to ~35 seconds** on a machine with the `refs/` mirror: the suite ran twice (once for the test gate, once for coverage) and is now one coverage run; `contract.Load` reloaded and re-compiled the 1 MB trimmed spec in thirteen tests and now loads it once per process; and the three `refs/`-dependent generator/trim tests skip in a race build, where the race detector multiplied their CPU-bound work by ~17 without being able to observe anything. See "Test speed" in `docs/ci.md`.
 
 ### Phase 3: Read
 `team/channel/chat list` (plus `show`), `channel files`, `channel/chat/thread read`, `search`, `mentions`,
@@ -464,7 +467,8 @@ then sessions (`-c`/`--resume`, history retention, prompt caching), curated memo
 and the REPL. Ship the first four before the UX layer so the history format is designed against real usage.
 
 ### Phase 7: Polish and v1.0
-completions, man pages, docs site, Homebrew cask (+ notarization decision)/Scoop/winget/nfpm, `install.sh`, update check.
+completions, man pages, docs site, update check.
+Extra install channels are *not* part of v1.0: releases stay GitHub-only (archive download or `go install`), and a Homebrew cask (+ notarization), Scoop, winget, nfpm packages or a `curl | sh` installer would each need a second repository, a secret or a review queue. Revisit only if users ask (see "Install channels" above).
 
 ## Automated testing strategy (no real Graph API in CI)
 We can't test against the real Graph API, so the plan is a **high-fidelity fake Microsoft cloud** plus **contract checks against Microsoft's published OpenAPI spec**. The fakes stay honest by validating them against that spec, so tests don't drift into testing our own assumptions.
@@ -541,9 +545,12 @@ We can't test against the real Graph API, so the plan is a **high-fidelity fake 
 - **Validation:** every request recorded by fakegraph in Layers 2 and 5, and every response it returns, is checked against the spec with `kin-openapi`, **except `$batch`**: the description contains no `/$batch` path or batch schema at all, so batch envelopes must be validated against a small local schema instead. Say that explicitly rather than claiming "every request".
 - **Expect and resolve the `@odata.type` conflict.** The spec marks `@odata.type` as required in thousands of schemas including `microsoft.graph.chatMessage`, while the docs say only `body` is mandatory and the code we port omits it. Either send `@odata.type` on writes or strip those `required` entries from the vendored copy — and record the divergence in the trim script. Without this, the first correct POST fails the contract test.
 - **Drift check:** a weekly scheduled CI job re-runs the validation against the **same pinned SHA** and opens an issue when a rerun disagrees, i.e. it detects tool/dependency drift. Do not download "the latest spec" in CI: that contradicts the pinned mirror and makes the suite go red on unrelated Microsoft-side churn. Upgrading the spec is a deliberate `scripts/fetch-refs.sh --update` bump reviewed like any other dependency.
+- **Cost, and how it is kept down** (revised 2026-10-04). This package is the most expensive part of the suite, and it is pure CPU-bound data validation, so:
+  - `contract.Load` builds the trimmed-spec validator **once per process** (`sync.OnceValues`): it used to parse and schema-compile the 1 MB description in each of the ~13 tests that call it (~0.4 s normally, ~4 s under `-race`). A `Validator` is read-only after construction, so sharing it is safe even for parallel tests.
+  - The three tests that parse the whole upstream description out of `refs/` (the generator's currency and determinism tests and the trimmer's unknown-route test) **skip in a race build** — see `mirrorHeavy` in `internal/testing/contract/contract_test.go`. The race detector multiplies their single-goroutine work by ~17x and cannot observe anything there; `mise run contract` runs them without it, `mise run check` runs both, and CI's `test`/`coverage` jobs have no mirror and skipped them already.
 
 ### Layer 7: Real-response fixtures (optional, maintainer-run, scrubbed)
-- **Recording:** `make record` runs a small scenario against a real tenant with `go-vcr` — pin the import path `gopkg.in/dnaeon/go-vcr.v4/pkg/{recorder,cassette}`, since the module cache also holds `github.com/dnaeon/go-vcr` v1.2.0 (a test dependency of the Anthropic SDK) with an incompatible API, and it sorts first in a grep. It is manual and never runs in CI.
+- **Recording:** `mise run record` runs a small scenario against a real tenant with `go-vcr` — pin the import path `gopkg.in/dnaeon/go-vcr.v4/pkg/{recorder,cassette}`, since the module cache also holds `github.com/dnaeon/go-vcr` v1.2.0 (a test dependency of the Anthropic SDK) with an incompatible API, and it sorts first in a grep. It is manual and never runs in CI.
 - **Scrubbing:** a **scrubber** replaces names, emails, UPNs, tenant and object IDs, and message text with synthetic values before anything is committed. A CI guard fails the build if a cassette contains the real tenant domain or GUID patterns that are not on an allow-list.
 - **Use:** the recorded shapes become seed data and replay tests. This is how real-world quirks (split `<at>` tags, systemEventMessage, odd HTML) reach the test suite without CI needing tenant access.
 
@@ -554,14 +561,15 @@ We can't test against the real Graph API, so the plan is a **high-fidelity fake 
 - **Prompt quality:** optional prompt evals run manually against a real model. They are not run in CI.
 
 ### CI gates
-- `go test -race -shuffle=on ./...` with a coverage threshold of at least 80%, plus `golangci-lint` and `govulncheck`. The ported repo's thresholds are 80 for branches/functions/lines/statements ([vitest.config.ts](refs/teams-mcp/vitest.config.ts)); write down which paths we exclude and why.
-- testscript runs on a matrix of ubuntu, macos and windows.
-- The fuzz corpus runs as regression tests on every PR, plus a short `-fuzztime` nightly.
-- The weekly spec-drift job (against the pinned spec, see Layer 6).
-- **Release smoke:** install the goreleaser snapshot on clean runners with no Go or Node, then run `teams --version`, `teams auth status` (expect exit 3), and a testscript subset against the built binary using a hidden test-tagged build. That test-tagged build is the one place an endpoint override exists; keep it out of the release artifacts and assert in CI that the released binary has no such flag.
+- `mise run test` = `go test -race -shuffle=on ./...` with a coverage threshold of at least 80% (`mise run cover`), plus `golangci-lint` and `govulncheck` — all four are tasks, so a green local `mise run check` means the same thing as a green CI run. The ported repo's thresholds are 80 for branches/functions/lines/statements ([vitest.config.ts](refs/teams-mcp/vitest.config.ts)); the excluded paths are written down in mise.toml and why in this file.
+  - Note for anyone touching the loop: `-shuffle=on` picks a random seed, which disables Go's test cache, so a repeat run re-executes everything. That is deliberate; `mise run test-short` skips the race detector but still shuffles.
+- testscript runs on a matrix of ubuntu, macos and windows (all three through `mise run test`; mise is installed by `jdx/mise-action`, which also removes the "no `make` on the Windows runner" exception the Makefile needed).
+- The fuzz corpus runs as regression tests on every PR, plus a short `-fuzztime` nightly (`FUZZTIME=10m mise run fuzz-short`).
+- The weekly spec-drift job (against the pinned spec, see Layer 6) runs `mise run contract`, which is the Layer 6 package alone rather than the whole suite.
+- **Release smoke:** install the goreleaser snapshot on clean runners with no Go, no Node and no mise, then run `teams --version`, `teams auth status` (expect exit 3), and a testscript subset against the built binary using a hidden test-tagged build. That test-tagged build is the one place an endpoint override exists; keep it out of the release artifacts and assert in CI that the released binary has no such flag.
 
 ### Manual, outside CI
-A maintainer runs `make smoke-live` before each release, gated by `TEAMS_E2E=1`, against a sandbox channel. It runs the same post→read→react→delete→search script, plus a bot-profile run through Key Vault. It is also where the MCP-inherited assumptions get confirmed: the `sent>=` day granularity, `IsMentioned`/`hasAttachment`, whether Graph honors `subject` on a channel post, the hostedContents `temporaryId` pairing, and how deeply Teams really nests `<at>` tags.
+A maintainer runs `mise run smoke-live` before each release, gated by `TEAMS_E2E=1`, against a sandbox channel. It runs the same post→read→react→delete→search script, plus a bot-profile run through Key Vault. It is also where the MCP-inherited assumptions get confirmed: the `sent>=` day granularity, `IsMentioned`/`hasAttachment`, whether Graph honors `subject` on a channel post, the hostedContents `temporaryId` pairing, and how deeply Teams really nests `<at>` tags.
 
 ### Developer experience bonus
 - **Standalone fake:** fakegraph and fakeidp can also run as a standalone dev server. `go run ./internal/testing/devserver` with seeded demo data, used with a `-tags dev` build, lets anyone develop and demo the CLI UX without a tenant.

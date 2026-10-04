@@ -194,7 +194,7 @@ func TestRenamePathParameters(t *testing.T) {
 // TestFindOperationRejectsUnknownRoute pins the failure the trimmer must produce
 // when a route has no counterpart in the description at all.
 func TestFindOperationRejectsUnknownRoute(t *testing.T) {
-	root := hasRefs(t)
+	root := mirrorHeavy(t)
 	raw, err := os.ReadFile(filepath.Join(root, openAPISource))
 	if err != nil {
 		t.Fatal(err)

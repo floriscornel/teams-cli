@@ -22,8 +22,8 @@ sample tokens.
 What helps us most in the report:
 
 - the affected version (`teams version` prints version, commit and date);
-- the platform and how you installed it (Homebrew cask, Scoop, deb/rpm/apk,
-  `go install`, `curl | sh`);
+- the platform and how you installed it (a GitHub Release archive, or
+  `go install`);
 - a minimal reproduction, ideally against the bundled fake Graph server rather
   than a real tenant;
 - what an attacker gains: token disclosure, privilege escalation across
@@ -78,9 +78,9 @@ argument, and never prints one or writes one to a config file (PLAN.md
 - `teams` rejects token-like flags instead of reading them, because arguments
   are visible to every other process on the machine through `ps`, land in shell
   history, and are copied into CI logs and crash reports.
-- Nothing in this repository contains credentials: the release workflows use a
-  short-lived GitHub App installation token and the runner's OIDC token, and
-  Apple notarization keys live in GitHub encrypted secrets.
+- Nothing in this repository contains credentials: the release workflow uses
+  only the automatic `GITHUB_TOKEN` and the runner's OIDC token, and it publishes
+  to this repository only (PLAN.md "Release secrets").
 
 If you find a code path that takes a secret from `argv`, prints one, logs one, or
 writes one to disk, treat it as a vulnerability and report it through the private
@@ -88,9 +88,9 @@ channel above.
 
 ## Scope
 
-In scope: the `teams` CLI and its packaging (archives, deb/rpm/apk, Homebrew
-cask, Scoop manifest), the fake Graph and fake identity-provider test servers,
-and the release pipeline.
+In scope: the `teams` CLI and its release artifacts (the archives on the GitHub
+Release, the checksums, the SBOMs and the attestation), the fake Graph and fake
+identity-provider test servers, and the release pipeline.
 
 Out of scope: vulnerabilities in Microsoft Graph, Entra ID or Teams themselves
 (report those to Microsoft), and findings that require an attacker to already

@@ -171,7 +171,7 @@ func TestTrimmedSpecHasNoDanglingRefs(t *testing.T) {
 // (PLAN.md "CI/CD"). It skips when the refs/ mirror is not available, because
 // ordinary `go test ./...` must not need it.
 func TestCommittedArtifactsAreCurrent(t *testing.T) {
-	root := hasRefs(t)
+	root := mirrorHeavy(t)
 	generated, err := Generate(root)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -203,7 +203,7 @@ func TestCommittedArtifactsAreCurrent(t *testing.T) {
 // TestGenerateIsDeterministic runs the generator twice and compares, which is
 // what makes the refs-check `git diff --exit-code` meaningful.
 func TestGenerateIsDeterministic(t *testing.T) {
-	root := hasRefs(t)
+	root := mirrorHeavy(t)
 	first, err := Generate(root)
 	if err != nil {
 		t.Fatal(err)

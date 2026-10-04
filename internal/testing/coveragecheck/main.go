@@ -141,7 +141,8 @@ func analyze(profile string, excludes []string) (total, covered int, perFile map
 }
 
 // modulePrefix is the module path prefix in a coverage profile; the exclusion
-// list in the Makefile is written relative to the repository root.
+// list in mise.toml (`mise run cover`) is written relative to the repository
+// root.
 const modulePrefix = "github.com/floriscornel/teams-cli/"
 
 func moduleRelative(file string) string {

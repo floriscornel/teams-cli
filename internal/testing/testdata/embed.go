@@ -7,7 +7,8 @@
 // directory: internal/testing/contract needs these files, and the committed
 // location is fixed by the task's scope (internal/testing/testdata/openapi/).
 // Nothing here is production code, and internal/testing/... is excluded from
-// the repo-wide coverage floor (Makefile COVER_EXCLUDE).
+// the repo-wide coverage floor (the `mise run cover` exclusion list in
+// mise.toml).
 package testdata
 
 import "embed"

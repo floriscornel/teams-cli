@@ -36,6 +36,7 @@ those notes before treating an MCP behavior as documented.
 Reproduce or repair the mirror:
 
 ```bash
+mise run refs-fetch            # the task wrapper: same script, Go caches already set
 scripts/fetch-refs.sh          # idempotent; keeps the SHAs pinned in refs/MANIFEST.md
 scripts/fetch-refs.sh --update # move every source to its branch tip, prints a SHA changelog
 scripts/fetch-refs.sh --list   # sources, URLs, sparse paths
@@ -65,6 +66,14 @@ output derived from it.
 
 ## Project conventions
 
+- **Dev loop:** `mise.toml` is the single entry point for humans and CI — never add a Makefile
+  target back, and add new tooling as a mise task (see `docs/ci.md`). `mise run check` is the
+  gate (fmt-check + tidy + lint + cover + contract); `mise run contract` runs the Layer 6 package
+  without the race detector, which is the one place the suite behaves differently between the two
+  tasks. Tool versions live in `mise.toml`, not in the workflows.
+- **Releases are GitHub-only:** no Homebrew cask, no Scoop/winget manifest and no deb/rpm/apk, so
+  the release workflow needs no cross-repo token. Anything that publishes outside this repository
+  is a deliberate, reviewed change (PLAN.md "Install channels").
 - **Layout, auth, and command surface:** follow `PLAN.md` (Go, MSAL Go for auth, a thin
   hand-written Graph client instead of `msgraph-sdk-go`, cobra for commands).
 - **Testing rule:** every new command lands with its `fakegraph` routes, a `testscript` script

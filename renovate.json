@@ -38,7 +38,13 @@
       "schedule": ["before 6am on monday"]
     },
     {
-      "description": "Tool versions pinned inside .github/workflows via '# renovate:' comments (see customManagers below).",
+      "description": "Tool versions pinned in mise.toml ([tools] and per-task tools), read by Renovate's built-in mise manager.",
+      "matchManagers": ["mise"],
+      "groupName": "mise tools",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "The mise binary version pinned in the workflows via a '# renovate:' comment (see customManagers below).",
       "matchManagers": ["custom.regex"],
       "groupName": "ci tool versions",
       "schedule": ["before 6am on monday"]
@@ -54,12 +60,18 @@
       "matchManagers": ["gomod"],
       "matchDepTypes": ["golang"],
       "enabled": false
+    },
+    {
+      "description": "Same rule for the Go toolchain in mise.toml: it must stay equal to the go directive in go.mod, so a bump updates go.mod and mise.toml in one reviewed change rather than a weekly PR.",
+      "matchManagers": ["mise"],
+      "matchDepNames": ["go"],
+      "enabled": false
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Pinned tool versions in .github/workflows, annotated with a '# renovate: datasource=... depName=...' comment on the line above the value.",
+      "description": "The mise binary version (MISE_VERSION in the workflows) is annotated with a '# renovate: datasource=github-releases depName=jdx/mise' comment on the line above the value. Every other tool version lives in mise.toml and is handled by the mise manager.",
       "managerFilePatterns": ["/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)[ \\t]*\\n[ \\t]*[\\w.-]+:[ \\t]*['\"]?(?<currentValue>v?[0-9][0-9A-Za-z.+_-]*)"

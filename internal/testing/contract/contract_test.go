@@ -34,6 +34,34 @@ func hasRefs(t *testing.T) string {
 	return root
 }
 
+// mirrorHeavy returns the repository root for a test that parses the whole
+// upstream Graph description out of refs/, and skips that test when the binary
+// was built with the race detector.
+//
+// Those tests are single-goroutine data transformation: the race detector has
+// nothing to observe there and only makes them ~17x slower (the trimmed-spec
+// generator takes ~50 s under -race and ~3 s without, because YAML parsing and
+// JSON-schema compilation allocate heavily). Nothing is lost by running them
+// without it:
+//
+//   - `mise run contract` runs this package without -race, and `mise run check`
+//     runs both, so the local gate still covers them;
+//   - the refs-check CI job regenerates the very same artifacts through
+//     scripts/gen-contract.sh and fails on a diff, which is the same invariant;
+//   - CI's `test` and `coverage` jobs have no refs/ mirror, so these tests skip
+//     there anyway.
+func mirrorHeavy(t *testing.T) string {
+	t.Helper()
+	root := hasRefs(t)
+	if raceEnabled {
+		t.Skip("heavy mirror test skipped under -race: it parses the full Graph description from refs/ " +
+			"and the race detector only adds ~17x to that. `mise run contract` runs it without -race " +
+			"(the refs-check CI job regenerates the same artifacts), so run that before touching the " +
+			"generator, the trim rules or the route list.")
+	}
+	return root
+}
+
 func TestLoadEmbeddedSpec(t *testing.T) {
 	v := Load(t)
 	if v == nil || v.doc == nil {

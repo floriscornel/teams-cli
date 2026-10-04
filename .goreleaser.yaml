@@ -6,13 +6,22 @@
 #
 # Docs are mirrored under refs/goreleaser/www/content/ and cited per key.
 #
-# Local entry points (Makefile is the single entry point):
-#   make release-check   -> goreleaser check
-#   make snapshot        -> goreleaser build --snapshot --clean
+# Install channels: GitHub Releases only. Users download an archive, or build
+# from source with `go install github.com/floriscornel/teams-cli/cmd/teams@…`.
+# There is no Homebrew cask, no Scoop manifest, no winget manifest and no
+# deb/rpm/apk: those all push to a second repository or need a maintainer
+# review, and none of them is worth it before v1.0 (PLAN.md "Install channels").
+#
+# Local entry points (mise.toml is the single entry point):
+#   mise run release-check   -> goreleaser check
+#   mise run snapshot        -> goreleaser build --snapshot --clean
+#   mise run release         -> goreleaser release --clean (release.yml calls
+#                               this; goreleaser invokes the pinned cosign and
+#                               syft from mise.toml)
 # CI:
-#   .github/workflows/ci.yml  lint job -> make release-check
-#   .github/workflows/ci.yml  build job -> make snapshot
-#   .github/workflows/release.yml    -> goreleaser release --clean
+#   .github/workflows/ci.yml  lint job -> mise run release-check
+#   .github/workflows/ci.yml  build job -> mise run snapshot
+#   .github/workflows/release.yml      -> mise run release
 #
 # Version: GoReleaser v2.18.x (config version 2).
 
@@ -27,9 +36,7 @@ project_name: teams
 builds:
   - id: teams
     main: ./cmd/teams
-    # Binary name is `teams`; the nfpm packages below add a `teams-cli` symlink
-    # for the collision with the old Microsoft Teams for Linux binary
-    # (PLAN.md "Other dev experience" -> Binary name).
+    # Binary name is `teams` inside every archive.
     binary: teams
     env:
       # darwin/linux/windows x amd64/arm64 with no cgo: the CLI is pure Go.
@@ -39,9 +46,9 @@ builds:
       # (refs/.../builders/go.md "Reproducibility").
       - -trimpath
     ldflags:
-      # Same variable names as the Makefile (LDFLAGS): -X main.version/commit/date.
-      # `main.date` uses CommitDate (not the build time) so a rebuild of the same
-      # commit is byte-identical.
+      # Same variable names as `mise run build`/`install` (main.version/commit/
+      # date in cmd/teams). `main.date` uses CommitDate (not the build time) so
+      # a rebuild of the same commit is byte-identical.
       - -X main.version={{ .Version }}
       - -X main.commit={{ .Commit }}
       - -X main.date={{ .CommitDate }}
@@ -67,7 +74,6 @@ archives:
       - tar.gz
     # Explicit rather than relying on the documented default:
     #   {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
-    # install.sh and the docs quote this file name.
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
@@ -81,8 +87,10 @@ archives:
       - LICENSE*
       - README*
       - CHANGELOG*
-      # The generated man pages travel with every archive; `make docs` produces
-      # them under docs/man/ (goreleaser's `info`/`dst` per-entry form).
+      # The generated man pages travel with every archive, so a user who
+      # unpacks a tarball by hand still gets `man teams`; `mise run docs`
+      # produces them under docs/man/ (goreleaser's `info`/`dst` per-entry
+      # form). The deb/rpm/apk packages that used to consume them are gone.
       - src: docs/man/*
         dst: man
 
@@ -165,130 +173,35 @@ changelog:
 # ---------------------------------------------------------------------------
 release:
   # v0.x: any tag with a prerelease indicator (v0.2.0-rc.1) becomes a GitHub
-  # pre-release and, together with `skip_upload: auto` below, stays out of the
-  # cask/bucket (PLAN.md "Release process").
+  # pre-release and a plain v0.x.y tag a full release (PLAN.md "Release
+  # process"). Nothing outside this repository is published either way.
   prerelease: auto
   # Rollback is "mark the release pre-release and ship a patch tag"; never
   # re-tag, so an existing release body is kept (this is also the default).
   mode: keep-existing
+  # The release body starts with how to get the binary, because GitHub Releases
+  # is the only install channel; the generated changelog follows it.
+  header: |
+    ## Install
+
+    Download the archive for your platform below and put `teams` on your PATH,
+    or build it from source:
+
+    ```sh
+    go install github.com/floriscornel/teams-cli/cmd/teams@{{ .Tag }}
+    ```
+
+    Every archive is covered by `checksums.txt`, which is signed with cosign
+    keyless (`checksums.txt.sigstore.json`) and attested, so you can verify a
+    download with:
+
+    ```sh
+    sha256sum -c checksums.txt --ignore-missing
+    gh attestation verify --owner floriscornel <archive> --repository floriscornel/teams-cli --signer-workflow floriscornel/teams-cli/.github/workflows/release.yml
+    ```
 
 # ---------------------------------------------------------------------------
-# Install channels
-# ---------------------------------------------------------------------------
-
-# Homebrew: `brews:` (formulas) is DEPRECATED since GoReleaser v2.10
-# (refs/goreleaser/www/content/customization/publish/homebrew_formulas.md),
-# use `homebrew_casks:`. Install: brew install --cask floriscornel/tap/teams
-# refs/goreleaser/www/content/customization/publish/homebrew_casks.md
-homebrew_casks:
-  - name: teams
-    # `binaries` is the binary name inside the cask; default is the cask name.
-    binaries:
-      - teams
-    # Explicit repository so a GoReleaser run outside the tap can still publish.
-    # The token falls back to GITHUB_TOKEN, which release.yml sets to a GitHub
-    # App installation token (never a PAT, PLAN.md "Release secrets"); see
-    # docs/ci.md.
-    repository:
-      owner: floriscornel
-      name: homebrew-tap
-      branch: main
-    # v0.x prereleases do not update the tap.
-    skip_upload: auto
-    description: "teams CLI - Microsoft Teams from the terminal"
-    homepage: "https://github.com/floriscornel/teams-cli"
-    # macOS Gatekeeper quarantines unsigned cask binaries. Decision for v0.x is
-    # to document the manual `xattr` (PLAN.md "Install channels"); notarization
-    # via refs/.../sign/notarize.md (anchore/quill, needs an Apple Developer ID
-    # certificate and an App Store Connect API key) is a v1.0 item.
-    caveats: |
-      To run the teams CLI you must clear the macOS quarantine flag once:
-
-        xattr -dr com.apple.quarantine "$(brew --prefix)/bin/teams"
-
-      The teams CLI is not notarized yet (see PLAN.md "Install channels").
-
-# Scoop: floriscornel/scoop-bucket
-# refs/goreleaser/www/content/customization/publish/scoop.md
-scoops:
-  - name: teams
-    repository:
-      owner: floriscornel
-      name: scoop-bucket
-      branch: main
-    skip_upload: auto
-    description: "teams CLI - Microsoft Teams from the terminal"
-    homepage: "https://github.com/floriscornel/teams-cli"
-
-# winget: intentionally disabled until v1.0. Every enablement opens a review PR
-# against microsoft/winget-pkgs (PLAN.md "Install channels"), and the OSS
-# publisher commits the manifest to a fork repo first.
-# refs/goreleaser/www/content/customization/publish/winget.md
-#
-# winget:
-#   - name: teams
-#     # Required by the schema.
-#     publisher: Floris Cornel
-#     short_description: "Microsoft Teams from the terminal"
-#     # SPDX identifier; fill in together with the LICENSE file added for nfpms.
-#     license: "<SPDX id>"
-#     package_identifier: floriscornel.teams
-#     publisher_url: "https://github.com/floriscornel"
-#     publisher_support_url: "https://github.com/floriscornel/teams-cli/issues/new"
-#     repository:
-#       owner: floriscornel
-#       name: winget-pkgs
-#       branch: main
-#       pull_request:
-#         enabled: true
-#         base:
-#           owner: microsoft
-#           name: winget-pkgs
-#           branch: master
-
-# Linux packages: deb, rpm, apk.
-# refs/goreleaser/www/content/customization/package/nfpm.md
-nfpms:
-  - id: packages
-    package_name: teams
-    formats:
-      - deb
-      - rpm
-      - apk
-    bindir: /usr/bin
-    vendor: floriscornel
-    homepage: "https://github.com/floriscornel/teams-cli"
-    # Without this nfpm falls back to `Unset Maintainer <unset@localhost>`
-    # (verified with GoReleaser v2.18.2, see docs/ci.md). The address is the
-    # GitHub noreply form, not a personal mailbox.
-    maintainer: "floris.cornel <floriscornel@users.noreply.github.com>"
-    description: |-
-      teams CLI - Microsoft Teams from the terminal.
-      A standalone Go port of teams-mcp with a thin hand-written Graph client.
-    # No `license:` on purpose: the repo has no LICENSE file yet and PLAN.md
-    # does not pin an SPDX identifier. GoReleaser's `metadata.license` is
-    # Pro-only, and deb/rpm/apk all build fine with an empty license field
-    # (verified with v2.18.2), so nothing is invented here. Add both the LICENSE
-    # file and this key in the same PR.
-    # The old Microsoft Teams for Linux package shipped /usr/bin/teams, so ship
-    # a `teams-cli` symlink next to it rather than claiming the name
-    # (PLAN.md "Install channels" -> Linux packages).
-    #
-    # `conflicts:` / `replaces:` are deliberately NOT set: PLAN.md says to check
-    # what the Microsoft package actually installed first.
-    contents:
-      - src: /usr/bin/teams
-        dst: /usr/bin/teams-cli
-        type: symlink
-    # The generated command reference can travel with the package once
-    # docs/commands has content; nfpm `contents` entries with a `src` glob that
-    # matches nothing are not safe to ship blind, so this is left out for now:
-    #   - src: docs/commands
-    #     dst: /usr/share/doc/teams-cli/commands
-    #     type: tree
-
-# ---------------------------------------------------------------------------
-# Snapshots (used by `make snapshot` and the ci.yml build job)
+# Snapshots (used by `mise run snapshot` and the ci.yml build job)
 # refs/goreleaser/www/content/customization/publish/snapshots.md
 # ---------------------------------------------------------------------------
 snapshot:

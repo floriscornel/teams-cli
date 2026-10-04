@@ -18,7 +18,7 @@
 /.goreleaser.yaml       @floriscornel
 /.golangci.yml          @floriscornel
 /renovate.json          @floriscornel
-/Makefile               @floriscornel
+/mise.toml              @floriscornel
 /SECURITY.md            @floriscornel
 
 # The reference mirror's pinned SHAs and the curated index: a bump here changes
@@ -27,5 +27,5 @@
 /refs/INDEX.md          @floriscornel
 /scripts/fetch-refs.sh  @floriscornel
 
-# Generated command reference and man pages (make docs).
+# Generated command reference and man pages (mise run docs).
 /docs/                  @floriscornel

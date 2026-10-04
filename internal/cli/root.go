@@ -26,7 +26,7 @@ import (
 //
 //	-ldflags "-X main.version=… -X main.commit=… -X main.date=…"
 //
-// (see the Makefile and .goreleaser.yaml).
+// (see the build/install tasks in mise.toml and .goreleaser.yaml).
 var (
 	Version = "dev"
 	Commit  = "none"

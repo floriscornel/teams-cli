@@ -1,0 +1,215 @@
+# mise.toml -- the single entry point for humans and CI (PLAN.md "Toolchain and
+# local workflow"). Every CI step runs a task defined here, so "works locally"
+# and "works in CI" mean the same thing:
+#
+#   mise trust          # once per clone: tasks in this file execute code
+#   mise install        # the pinned tools below (go, golangci-lint, ...)
+#   mise run            # list every task
+#   mise run check      # everything CI gates on
+#
+# Go caches stay inside the checkout so a sandboxed runner (no write access to
+# the global Go cache) works unchanged. Each of the three can still be
+# overridden, e.g. `GOCACHE=/tmp/gocache mise run test`.
+#
+# Shell: mise runs `run` strings through `sh -c` on unix and `cmd /c` on
+# Windows, so every task the CI runs on Windows (`test`) is a plain command
+# with no shell syntax. The tasks that need a POSIX shell (build, tidy,
+# docs-check, fuzz-short, smoke, ...) are unix-only, exactly like the Makefile
+# they replace was.
+
+# Minimum mise version this file is written for (structured `run` steps and
+# per-task `tools`). Keep it ≤ the MISE_VERSION the workflows pin.
+min_version = "2026.9.18"
+
+[env]
+GOPATH = "{{ env.GOPATH | default(value=config_root ~ '/.cache/gopath') }}"
+GOMODCACHE = "{{ env.GOMODCACHE | default(value=config_root ~ '/.cache/gopath/pkg/mod') }}"
+GOCACHE = "{{ env.GOCACHE | default(value=config_root ~ '/.cache/go-build') }}"
+
+# ---------------------------------------------------------------------------
+# Tools
+#
+# Pinned versions live here, not in the workflows: Renovate's `mise` manager
+# bumps them (renovate.json groups them as "mise tools"), and CI installs them
+# through jdx/mise-action, so a local `mise install` and a CI run use the same
+# binaries.
+#
+# `go` must stay equal to the `go` directive in go.mod: mise cannot read it
+# (it only reads a `toolchain` directive from go.mod, and go.mod deliberately
+# carries none), and a mismatch would make the toolchain download itself.
+#
+# Only the two tools every job needs are global. The rest are declared on the
+# task that uses them, so `mise install` stays small and CI installs a release
+# tool only where a job actually releases or scans.
+# ---------------------------------------------------------------------------
+[tools]
+go = "1.27.1"
+golangci-lint = "2.13.2"
+
+# ---------------------------------------------------------------------------
+# Development
+# ---------------------------------------------------------------------------
+
+[tasks.build]
+description = "Build the CLI into bin/teams"
+run = "go build -trimpath -ldflags \"-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o bin/teams ./cmd/teams"
+# The same file-target semantics the Makefile had: rebuild only when a source
+# or a module file is newer than the binary.
+sources = ["cmd/**/*.go", "internal/**/*.go", "go.mod", "go.sum"]
+outputs = ["bin/teams"]
+
+[tasks.install]
+description = "Install the CLI into GOBIN"
+run = "go install -trimpath -ldflags \"-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" ./cmd/teams"
+
+[tasks.tidy]
+description = "go mod tidy, then fail if it changed go.mod or go.sum"
+run = [
+  "go mod tidy",
+  "git diff --exit-code -- go.mod go.sum || { echo 'go.mod/go.sum were dirty after go mod tidy' >&2; exit 1; }",
+]
+
+[tasks.fmt]
+description = "Format the tree (gofumpt + goimports through golangci-lint)"
+run = "golangci-lint fmt ./cmd/... ./internal/..."
+
+[tasks.fmt-check]
+description = "Fail when the tree is not formatted"
+run = "golangci-lint fmt --diff ./cmd/... ./internal/..."
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+[tasks.check]
+description = "Everything CI gates on: fmt-check + tidy + lint + cover + contract"
+# A `run` sequence, not `depends`: mise runs dependencies in parallel, and
+# `tidy` must not rewrite go.mod while `cover` is compiling against it.
+run = [
+  { task = "fmt-check" },
+  { task = "tidy" },
+  { task = "lint" },
+  { task = "cover" },
+  { task = "contract" },
+]
+
+[tasks.test]
+description = "Unit, fake and testscript tests with the race detector"
+run = "go test -race -shuffle=on ./..."
+
+[tasks.test-short]
+description = "Tests without the race detector (fast local loop)"
+run = "go test -shuffle=on ./..."
+
+[tasks.cover]
+description = "Run the suite once with coverage and enforce the coverage floor"
+# One run, not two: this profile feeds both the test gate and the coverage
+# floor, which is what made the old `make check` take twice as long as it
+# needed to.
+run = [
+  "go test -race -shuffle=on -covermode=atomic -coverprofile={{ env.COVERPROFILE | default(value='coverage.out') }} ./...",
+  "go run ./internal/testing/coveragecheck -profile {{ env.COVERPROFILE | default(value='coverage.out') }} -min {{ env.COVERAGE_MIN | default(value='80') }} -exclude '{{ env.COVER_EXCLUDE | default(value='cmd/teams/main.go internal/testing') }}'",
+]
+
+[tasks.contract]
+description = "Layer 6 contract package without the race detector (see docs/ci.md)"
+run = "go test -shuffle=on ./internal/testing/contract/"
+
+[tasks.lint]
+description = "Validate .golangci.yml, then golangci-lint"
+run = [
+  "golangci-lint config verify",
+  "golangci-lint run ./cmd/... ./internal/...",
+]
+
+[tasks.vuln]
+description = "govulncheck ./..."
+# Pinned rather than `go run ...@latest`, so the scanner cannot drift between
+# runs (docs/ci.md used to list that as an open item).
+tools = { "go:golang.org/x/vuln/cmd/govulncheck" = "1.8.0" }
+run = "govulncheck ./..."
+
+[tasks.fuzz-short]
+description = "Short fuzz run for every fuzz target (FUZZTIME overrides 15s)"
+run = '''
+for target in $(grep -rhoE '^func (Fuzz[A-Za-z0-9_]+)' --include='*_test.go' cmd internal | awk '{print $2}' | sort -u); do
+  for pkg in $(grep -rlE "^func $target" --include='*_test.go' cmd internal | xargs -n1 dirname | sort -u); do
+    echo "fuzzing $pkg/$target"
+    go test -run '^$' -fuzz "^$target$" -fuzztime ${FUZZTIME:-15s} ./$pkg || exit 1
+  done
+done
+'''
+
+[tasks.docs]
+description = "Regenerate docs/commands and the man pages"
+run = "go run ./internal/testing/docgen -dir docs"
+
+[tasks.docs-check]
+description = "Fail when the generated docs are out of date"
+run = [
+  { task = "docs" },
+  # Only the generated trees are compared: diffing all of docs/ would also fail
+  # on an uncommitted prose edit (docs/ci.md, docs/spike/), which is not what
+  # this check is about.
+  "git diff --exit-code -- docs/commands docs/man || { echo \"the generated docs are out of date: run 'mise run docs' and commit the result\" >&2; exit 1; }",
+]
+
+[tasks.refs-fetch]
+description = "Fetch/refresh the vendored reference mirror at the pinned SHAs"
+run = "scripts/fetch-refs.sh"
+
+[tasks.refs-check]
+description = "Verify the vendored reference mirror (needs refs-fetch to have run)"
+run = "scripts/fetch-refs.sh --verify"
+
+[tasks.contract-generate]
+description = "Regenerate the Layer 6 inputs from the mirror (fails on drift with --verify)"
+run = "scripts/gen-contract.sh"
+
+# ---------------------------------------------------------------------------
+# Releasing
+# ---------------------------------------------------------------------------
+
+[tasks.snapshot]
+description = "Cross-compile the release matrix locally (no publish)"
+# Release-only tools are task-scoped: they cost a download the first time a
+# task runs and stay out of `mise install` for everyone else.
+tools = { goreleaser = "2.18.2" }
+run = "goreleaser build --snapshot --clean"
+
+[tasks.release-check]
+description = "Validate .goreleaser.yaml"
+tools = { goreleaser = "2.18.2" }
+run = "goreleaser check"
+
+[tasks.release]
+description = "Cut a release from a signed tag (release.yml runs this)"
+# goreleaser runs `cosign` and `syft` as commands for `signs:` and `sboms:`
+# (.goreleaser.yaml), so all three are pinned here.
+tools = { goreleaser = "2.18.2", cosign = "3.1.3", syft = "1.54.0" }
+run = "goreleaser release --clean"
+
+[tasks.smoke]
+description = "Install-free smoke test of the built binary"
+run = [
+  { task = "build" },
+  "./scripts/smoke.sh bin/teams",
+]
+
+[tasks.smoke-live]
+description = "Maintainer-only live smoke test against a real tenant (TEAMS_E2E=1)"
+run = '''
+test "$TEAMS_E2E" = "1" || { echo "set TEAMS_E2E=1 to run the live smoke test" >&2; exit 1; }
+go test -tags e2e -run TestLiveSmoke ./internal/testing/live/...
+'''
+
+[tasks.record]
+description = "Maintainer-only: record scrubbed real responses into fixtures (TEAMS_E2E=1)"
+run = '''
+test "$TEAMS_E2E" = "1" || { echo "set TEAMS_E2E=1 to record cassettes" >&2; exit 1; }
+go test -tags record -run TestRecord ./internal/testing/record/...
+'''
+
+[tasks.clean]
+description = "Remove build and coverage artifacts"
+run = "rm -rf bin dist coverage.out"
