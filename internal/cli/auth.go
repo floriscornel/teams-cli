@@ -83,6 +83,12 @@ func (a *App) newAuthLoginCmd() *cobra.Command {
 							dc.ExpiresOn.Local().Format("15:04:05"))
 					}
 				},
+				OnBrowser: func(url string) {
+					a.Printer.Statusf("opening your browser; if it does not open, visit:")
+					a.Printer.Statusf("  %s", url)
+					a.Printer.Statusf("waiting up to %s for the sign-in to come back (Ctrl-C to stop)", auth.InteractiveTimeout)
+					a.Printer.Statusf("if the browser shows AADSTS50011, this app registration has no http://localhost redirect URI: re-run with `teams auth login --device`")
+				},
 				OnFallback: func(cause error) {
 					a.Printer.Warnf("the browser sign-in failed (%v)", cause)
 					a.Printer.Statusf("falling back to a device code; ask your Entra admin to register http://localhost as a Mobile and desktop redirect URI to fix this permanently")

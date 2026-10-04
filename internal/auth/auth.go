@@ -26,6 +26,7 @@ import (
 	"github.com/AzureAD/microsoft-authentication-extensions-for-go/cache"
 	msalerrors "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+	"github.com/pkg/browser"
 
 	"github.com/floriscornel/teams-cli/internal/auth/tokenstore"
 	"github.com/floriscornel/teams-cli/internal/clock"
@@ -34,6 +35,18 @@ import (
 	"github.com/floriscornel/teams-cli/internal/output"
 	"github.com/floriscornel/teams-cli/internal/store"
 )
+
+// interactiveTimeout bounds the wait for the browser to hand the authorization
+// response back to MSAL's localhost listener. It exists because Entra can reject
+// a sign-in *before* it ever redirects: with a redirect URI the app registration
+// does not allow it renders AADSTS50011 in the browser and never calls back, so
+// without a deadline the CLI would sit there silently and look hung. The
+// device-code flow has its own documented 15-minute window and is unaffected.
+const interactiveTimeout = 5 * time.Minute
+
+// InteractiveTimeout is exported so the CLI can tell the user how long it will
+// wait, without repeating the number.
+const InteractiveTimeout = interactiveTimeout
 
 // tokenFreshness is the margin we keep when reusing an access token in-process.
 // MSAL itself refuses cached tokens within 5 minutes of expiry
@@ -174,6 +187,15 @@ func msalHTTPClientFor(hc *http.Client) *http.Client {
 	return hc
 }
 
+// browserTimeoutError is what a user sees when the browser never hands the
+// authorization response back, which is what AADSTS50011 looks like from the
+// CLI's side: Entra renders the error itself and never redirects.
+func browserTimeoutError() error {
+	return output.WithHint(
+		output.Authf("the browser sign-in did not come back within %s", interactiveTimeout),
+		"if your browser showed AADSTS50011, the app registration has no http://localhost redirect URI: re-run with `teams auth login --device`, or ask an admin to add http://localhost as a Mobile and desktop redirect URI")
+}
+
 // Authority is the MSAL authority URL for the profile's tenant.
 func (c *Client) Authority() string {
 	endpoints, ok := cloud.Lookup(c.eff.Cloud)
@@ -226,6 +248,10 @@ type LoginOptions struct {
 	// OnFallback is called when the browser flow fails with AADSTS50011 and we
 	// retry with device code (PLAN.md:110).
 	OnFallback func(err error)
+	// OnBrowser is called with the authorization URL just before the browser is
+	// opened, so the CLI can show it (and the AADSTS50011 hint) instead of
+	// appearing to do nothing while it waits for the callback.
+	OnBrowser func(url string)
 }
 
 // DeviceCode carries what the user has to type.
@@ -259,6 +285,14 @@ func (c *Client) Login(ctx context.Context, opts LoginOptions) (Result, error) {
 		return Result{}, output.WithHint(output.Usagef("no terminal for an interactive sign-in"),
 			"run `teams auth login --device` (or set TEAMS_NO_INPUT only when you really want no prompt)")
 	}
+	if opts.OnBrowser != nil && c.openURL == nil {
+		// Show the URL ourselves and then hand it to MSAL's own browser opener.
+		open := func(url string) error {
+			opts.OnBrowser(url)
+			return browser.OpenURL(url)
+		}
+		c.openURL = open
+	}
 	res, err := c.loginInteractive(ctx, scopes)
 	if err == nil {
 		return res, nil
@@ -278,12 +312,18 @@ func (c *Client) Login(ctx context.Context, opts LoginOptions) (Result, error) {
 }
 
 func (c *Client) loginInteractive(ctx context.Context, scopes []string) (Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, interactiveTimeout)
+	defer cancel()
+
 	interactiveOpts := []public.AcquireInteractiveOption{}
 	if c.openURL != nil {
 		interactiveOpts = append(interactiveOpts, public.WithOpenURL(c.openURL))
 	}
 	res, err := c.msal.AcquireTokenInteractive(ctx, scopes, interactiveOpts...)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return Result{}, browserTimeoutError()
+		}
 		return Result{}, err
 	}
 	return c.finish(res)

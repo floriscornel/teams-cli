@@ -383,6 +383,26 @@ func TestNilHTTPClientFallsBackToTheDefault(t *testing.T) {
 	}
 }
 
+func TestBrowserTimeoutExplainsTheRedirectURIFix(t *testing.T) {
+	err := browserTimeoutError()
+	if output.CodeOf(err) != output.CodeAuth {
+		t.Errorf("exit code = %d, want %d", output.CodeOf(err), output.CodeAuth)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "5m0s") {
+		t.Errorf("message does not say how long we waited: %q", msg)
+	}
+	hint := output.HintOf(err)
+	for _, want := range []string{"AADSTS50011", "--device", "http://localhost", "admin"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint = %q, want it to mention %q", hint, want)
+		}
+	}
+	if !strings.Contains(output.HintOf(err), "AADSTS50011") {
+		t.Error("the hint does not name the error the user actually saw")
+	}
+}
+
 func TestLoginIsRefusedWithoutATerminal(t *testing.T) {
 	env := newIDPEnv(t, []string{"User.Read"}, 3600)
 	_, err := env.client.Login(context.Background(), LoginOptions{Interactive: false})
