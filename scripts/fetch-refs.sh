@@ -88,7 +88,7 @@ selected() {
 # Each line: <name>|<git url>|<sparse patterns separated by ; , empty means full checkout>
 sources() {
   cat <<'SPEC'
-graph|https://github.com/microsoftgraph/microsoft-graph-docs-contrib|api-reference/v1.0/api/channel*;api-reference/v1.0/api/chat*;api-reference/v1.0/api/chatmessage*;api-reference/v1.0/api/team*;api-reference/v1.0/api/user*;api-reference/v1.0/api/drive*;api-reference/v1.0/api/search*;api-reference/v1.0/api/teamwork*;api-reference/v1.0/resources/channel*;api-reference/v1.0/resources/chat*;api-reference/v1.0/resources/team*;api-reference/v1.0/resources/user*;api-reference/v1.0/resources/drive*;api-reference/v1.0/resources/search*;api-reference/v1.0/resources/teamwork*;concepts/teams*;concepts/search-concept-messages*;concepts/search-concept-chat-messages*;concepts/throttling*;concepts/paging*;concepts/json-batching*;concepts/permissions-reference*;concepts/query-parameters*;concepts/delta-query*;/includes/throttling-teams.md;api-reference/v1.0/includes/permissions/*;api-reference/v1.0/resources/itembody*;api-reference/v1.0/resources/identityset*;api-reference/v1.0/resources/conversationmember*;api-reference/v1.0/resources/aaduserconversationmember*
+graph|https://github.com/microsoftgraph/microsoft-graph-docs-contrib|api-reference/v1.0/api/channel*;api-reference/v1.0/api/chat*;api-reference/v1.0/api/chatmessage*;api-reference/v1.0/api/team*;api-reference/v1.0/api/user*;api-reference/v1.0/api/drive*;api-reference/v1.0/api/search*;api-reference/v1.0/api/teamwork*;api-reference/v1.0/resources/channel*;api-reference/v1.0/resources/chat*;api-reference/v1.0/resources/team*;api-reference/v1.0/resources/user*;api-reference/v1.0/resources/drive*;api-reference/v1.0/resources/search*;api-reference/v1.0/resources/teamwork*;concepts/teams*;concepts/search-concept-messages*;concepts/search-concept-chat-messages*;concepts/throttling*;concepts/paging*;concepts/json-batching*;concepts/permissions-reference*;concepts/query-parameters*;concepts/delta-query*;/includes/throttling-teams.md;api-reference/v1.0/includes/permissions/*;api-reference/v1.0/resources/itembody*;api-reference/v1.0/resources/identityset*;api-reference/v1.0/resources/conversationmember*;api-reference/v1.0/resources/aaduserconversationmember*;api-reference/v1.0/resources/person*;api-reference/v1.0/resources/scoredemailaddress*;concepts/people*
 openapi|https://github.com/microsoftgraph/msgraph-metadata|/openapi/v1.0/openapi.yaml
 entra|https://github.com/MicrosoftDocs/entra-docs|docs/identity-platform/*.md;docs/identity-platform/**/*.md
 msteams|https://github.com/MicrosoftDocs/msteams-docs|msteams-platform/concepts/build-and-test/deep-link*;/msteams-platform/bots/how-to/format-your-bot-messages.md;msteams-platform/bots/how-to/conversations/*.md;/msteams-platform/includes/bots/user-mention.md;msteams-platform/task-modules-and-cards/cards/cards-format*;msteams-platform/graph-api/**/*.md
@@ -97,6 +97,7 @@ msal-go|https://github.com/AzureAD/microsoft-authentication-library-for-go|
 msal-ext|https://github.com/AzureAD/microsoft-authentication-extensions-for-go|
 azure-sdk|https://github.com/Azure/azure-sdk-for-go|sdk/azcore/**;sdk/azidentity/**;sdk/security/keyvault/azsecrets/**
 anthropic|https://github.com/anthropics/anthropic-sdk-go|
+goreleaser|https://github.com/goreleaser/goreleaser|/www/content/**
 teams-mcp|https://github.com/floriscornel/teams-mcp|src/**;/package.json;/vitest.config.ts;/tsconfig.json;/.github/workflows/*
 SPEC
 }
@@ -255,6 +256,9 @@ verify() {
   vfile "$REFS/graph/includes/throttling-teams.md" "Teams throttling include (referenced by throttling-limits.md) exists"
   vfile "$REFS/graph/concepts/search-concept-chat-messages.md" "Teams message-search semantics exist"
   vfile "$REFS/teams-mcp/vitest.config.ts" "teams-mcp coverage thresholds exist"
+  vcheck "KQL scope terms for Teams search (IsMentioned)" "IsMentioned" "$REFS/graph/concepts/search-concept-chat-messages.md"
+  vcheck "People API (relevance-ranked person search)" "relevance" "$REFS/graph/api-reference/v1.0/api/user-list-people.md"
+  vcheck "GoReleaser Homebrew casks" "homebrew_casks" "$REFS/goreleaser/www/content/customization/publish"
 
   # Regression guard: a path cited in the curated index must exist, so the index
   # cannot rot away from the mirror it describes.

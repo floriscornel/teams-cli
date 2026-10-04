@@ -20,6 +20,7 @@ would make this tracked file change on every fetch. `--verify` reports the total
 | msal-ext | https://github.com/AzureAD/microsoft-authentication-extensions-for-go | `f11cb8f0d30f858c49f4e90de80a6b43ce40a5b0` | full |
 | azure-sdk | https://github.com/Azure/azure-sdk-for-go | `add0a52e5962cfa2761d751b858c97456fa25f10` | sparse |
 | anthropic | https://github.com/anthropics/anthropic-sdk-go | `c9ebe447ac92c91748af817c265398e5d81ca49f` | full |
+| goreleaser | https://github.com/goreleaser/goreleaser | `61704ffc10e949f264bffcc9a936f6eeddb3f0a8` | sparse |
 | teams-mcp | https://github.com/floriscornel/teams-mcp | `b01182db9e450a2e3079bfa9a56d3e7f4e029693` | sparse |
 
 ## Sparse paths
@@ -60,6 +61,9 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   api-reference/v1.0/resources/identityset*
   api-reference/v1.0/resources/conversationmember*
   api-reference/v1.0/resources/aaduserconversationmember*
+  api-reference/v1.0/resources/person*
+  api-reference/v1.0/resources/scoredemailaddress*
+  concepts/people*
   ```
 
 - **openapi**
@@ -105,6 +109,12 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   ```
 
 - **anthropic** -- full checkout
+
+- **goreleaser**
+
+  ```
+  /www/content/**
+  ```
 
 - **teams-mcp**
 

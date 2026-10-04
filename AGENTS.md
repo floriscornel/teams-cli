@@ -26,6 +26,7 @@ or any Teams URL or KQL handling:
 | MSAL Go; cache extensions live in `refs/msal-ext/cache/` (the module root) | `refs/msal-go/`, `refs/msal-ext/` |
 | Azure SDK for Go: `azidentity`, `azsecrets` (+ its `fake` server) | `refs/azure-sdk/` |
 | Anthropic Go SDK (model IDs, tool runner, Foundry) | `refs/anthropic/` |
+| GoReleaser config reference (builds, casks, scoop, winget, signing, SBOM, attestations) | `refs/goreleaser/www/content/` |
 | teams-mcp reference implementation (`src/`, `vitest.config.ts`, CI) | `refs/teams-mcp/` |
 | Go libraries (module cache paths, `go doc` usage) | `refs/GO_LIBS.md` |
 

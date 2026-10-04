@@ -59,6 +59,7 @@ delegated), are in the same table.
 | teams edit <message> | PATCH the body | ``PATCH /teams/{team-id}/channels/{channel-id}/messages/{message-id}, PATCH /teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies/{reply-id}`` | channel: ChannelMessage.ReadWrite, Group.ReadWrite.All; chat: Chat.ReadWrite |
 | teams delete <message> | soft delete (undo: chatmessage-undosoftdelete.md) | ``POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/softDelete, POST /teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies/{reply-id}/softDelete`` | channel: ChannelMessage.ReadWrite; chat: Chat.ReadWrite |
 | teams react <message> <emoji> | setReaction | ``POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/setReaction, POST /teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies/{reply-id}/setReaction`` | channel: ChannelMessage.Send; chat: Chat.ReadWrite, ChatMessage.Send |
+| teams reply <chat message> | quote reply (chats have no threads); max 10 quoted messages | ``POST /chats/{chatId}/messages/replyWithQuote`` | delegated: ChatMessage.Send |
 | teams react --remove | unsetReaction | ``POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/unsetReaction, POST /teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies/{reply-id}/unsetReaction`` | channel: ChannelMessage.Send; chat: Chat.ReadWrite, ChatMessage.Send |
 | teams file download | channel folder driveItem | ``GET /teams/{id}/channels/{id}/filesFolder`` | delegated: Files.Read.All |
 
@@ -68,11 +69,14 @@ delegated), are in the same table.
 | teams chat read <chat> | chat messages | ``GET /me/chats/{chat-id}/messages, GET /users/{user-id \| user-principal-name}/chats/{chat-id}/messages`` | delegated: Chat.Read |
 | teams chat create --with | create chat; roles:[owner] is required | ``POST /chats`` | delegated: Chat.Create |
 | teams chat add-member <chat> <user> | add a member | ``POST /chats/{chat-id}/members`` | delegated: ChatMember.ReadWrite |
-| teams chat delete | delete a chat | ``DELETE /chats/{chat-id}`` | delegated: Chat.ManageDeletion.All |
+| teams chat delete | delete a chat (**admin consent required**) | ``DELETE /chats/{chat-id}`` | delegated: Chat.ManageDeletion.All |
+| teams chat mark-read / mark-unread | per-user read state | ``POST /chats/{chat-id}/markChatReadForUser, POST /chats/{chat-id}/markChatUnreadForUser`` | delegated: Chat.ReadWrite |
+| teams unread / chat list --unread | `viewpoint.lastMessageReadDateTime` vs `lastMessagePreview` (delegated only; `resources/chatviewpoint.md`) | ``GET /me/chats?$expand=lastMessagePreview&$orderby=lastMessagePreview/createdDateTime desc`` | delegated: Chat.ReadBasic |
 
 ### Search, mentions, users
 | teams search / teams mentions | POST /search/query (see the search note below) | ``POST /search/query`` | delegated: Mail.Read for the endpoint overall, but **chatMessage requires Chat.Read / Chat.ReadWrite / ChannelMessage.Read.All** — see the search note below |
 | teams whoami / teams user show | GET /me and GET /users/{id} | ``GET /me, GET /users/{id \| userPrincipalName}`` | delegated: User.Read |
+| person resolution (`@name`, AI `resolve_person`) | relevance-ranked people, fuzzy `$search` | ``GET /me/people`` | delegated: People.Read |
 | teams user search | GET /users with an escaped OData filter | ``GET /users`` | delegated: User.ReadBasic.All, User.Read.All, User.ReadWrite.All, Directory.Read.All, Directory.ReadWrite.All |
 | teams team list | GET /me/joinedTeams | ``GET /me/joinedTeams, GET /users/{id \| user-principal-name}/joinedTeams`` | delegated: Team.ReadBasic.All |
 | teams team show <team> | team metadata | ``GET /teams/{team-id}`` | delegated: Team.ReadBasic.All |
@@ -118,19 +122,36 @@ More things the table does not show:
   `/users/{id}/chats/{chat-id}/messages/...`, which is the `/users/{me}/chats` quirk
   PLAN.md mentions — see `refs/graph/api-reference/v1.0/api/chatmessage-softdelete.md`.
 
-- **Member listing needs a scope the plan's ported lists do not carry.** The least privileged delegated
-  permission for `GET /teams/{team-id}/members` is `TeamMember.Read.All`
-  (`api-reference/v1.0/includes/permissions/team-list-members-permissions.md`), and adding a chat member
-  needs `ChatMember.ReadWrite` (`…/chat-post-members-permissions.md`). Note also that the MCP's
-  `READ_ONLY_SCOPES` has no `Files.Read`, so `teams file download` needs `Files.Read` added to any
-  read-only scope set, and its `FULL_SCOPES` uses `Files.ReadWrite.All` where `Files.ReadWrite` suffices.
+- **Scope sets vs. the MCP's.** The MCP's `READ_ONLY_SCOPES` already carries `TeamMember.Read.All`
+  (least privileged for `GET /teams/{id}/members`). It lacks file access: channel files live in the team's
+  SharePoint drive, `GET …/filesFolder` is least-privileged `Files.Read.All`
+  (`…/channel-get-filesfolder-permissions.md`), and `Files.Read` / `Files.ReadWrite` cover only "the
+  signed-in user's files" (`concepts/permissions-reference.md`). So read-only needs `Files.Read.All`, and the
+  MCP's `Files.ReadWrite.All` in `FULL_SCOPES` is **correct** for channel uploads (`Files.ReadWrite` is
+  enough only for the chat path into the user's own OneDrive). Adding a chat member is least-privileged
+  `ChatMember.ReadWrite`, but `Chat.ReadWrite` is listed as the higher-privileged alternative
+  (`…/chat-post-members-permissions.md`), so the full set needs nothing extra.
 
-- **Message endpoints accept almost no query parameters.** Channel and chat message lists support only
-  `$top` (default 20, max 50) and `$expand`; "the other OData query parameters aren't currently supported"
-  (`api-reference/v1.0/api/channel-list-messages.md`). Sorting is by last-modified of the whole reply chain,
-  so `--since`/ordering is a **client-side** job for `channel read`, `chat read` and `thread read` too, not
-  just for `mentions`. Replies page at 200/1000, and `/me/chats?$expand=members` caps at 25 members with
-  `$top` max 50 (`api-reference/v1.0/api/chat-list.md`).
+- **Admin consent (delegated), from `concepts/permissions-reference.md` "AdminConsentRequired":**
+  required for `ChannelMessage.Read.All`, `ChannelMessage.ReadWrite`, `TeamMember.Read.All`,
+  `ChatMember.ReadWrite`, `Chat.ManageDeletion.All`; **not** required for `User.Read`, `User.ReadBasic.All`,
+  `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `Chat.Read`, `Chat.ReadBasic`, `Chat.ReadWrite`,
+  `Chat.Create`, `ChatMessage.Send`, `ChannelMessage.Send`, `Files.Read(.All)`, `Files.ReadWrite(.All)`,
+  `People.Read`. Reading channel messages therefore always needs an admin; chats do not.
+
+- **Message endpoints accept few query parameters, and chats differ from channels.**
+  - Channel message lists support only `$top` (default 20, max 50) and `$expand`; "the other OData query
+    parameters aren't currently supported" (`api-reference/v1.0/api/channel-list-messages.md`). Sorting is by
+    last-modified of the whole reply chain. Replies inlined via `$expand=replies` come 200 per response by
+    default (up to 1,000 in practice) with `replies@odata.nextLink`.
+  - `GET …/replies` supports only `$top`, max **50** (`api-reference/v1.0/api/chatmessage-list-replies.md`).
+  - **Chat message lists support `$orderby` and `$filter`** (`api-reference/v1.0/api/chat-list-messages.md`):
+    `$orderby` on `lastModifiedDateTime` (default) or `createdDateTime`, descending only; `$filter` with
+    `gt`/`lt` on `lastModifiedDateTime` or `lt` on `createdDateTime` — and the filter is **ignored** unless
+    `$orderby` names the same property. So `chat read --since` can filter server-side; `channel read` and
+    `thread read` cannot.
+  - `/me/chats?$expand=members` caps at 25 members with `$top` max 50, and supports `$orderby` on
+    `lastMessagePreview/createdDateTime desc` (`api-reference/v1.0/api/chat-list.md`).
 
 ### Entity shapes
 
@@ -250,13 +271,14 @@ Notes for the parser and the mention writer:
 | Teams message-search semantics (the `chatMessage` entity) | `refs/graph/concepts/search-concept-chat-messages.md` |
 | Outlook mail search semantics — **not** what `teams search` uses | `refs/graph/concepts/search-concept-messages.md` |
 
-`teams search` and `teams mentions` build KQL from `from:`, `sent>=`, `IsMentioned:`,
-`hasAttachment:` and free text. **Caveat:** the syntax reference documents operators and the
-`YYYY-MM-DD` date literal only — it never defines `sent`, `IsMentioned` or `hasAttachment`, and no
-mirrored Teams document does either. Those property names come from the MCP's own tool description
-(`refs/teams-mcp/src/tools/search.ts`), so treat them, and the claim that `sent>=` is day-granular
-(hence `--since` being tightened on `createdDateTime` client-side), as behavior to confirm against a
-live tenant in the Phase 1 spike rather than as documented facts.
+`teams search` and `teams mentions` build KQL from free text plus the **documented** Teams scope terms
+(`refs/graph/concepts/search-concept-chat-messages.md`, "Supported scope terms"): `from`, `to` (partially
+supported, one-on-one only), `sent` (example `sent > 2022-07-14`), `IsMentioned`, `IsRead`,
+`hasAttachment`, and `mentions:<user id without dashes>`. The general syntax reference covers operators
+and the `YYYY-MM-DD` literal. Still unverified: whether `sent` is day-granular (the examples use dates only,
+hence `--since` is tightened on `createdDateTime` client-side). The same page's "Known limitations": no
+sorting for messages, `total` is the count on the current page, only messages the user was included in, and
+no mixing with other entity types.
 
 ## 7. MSAL Go and the cache extensions
 
@@ -280,14 +302,29 @@ needs cgo on **macOS as well as Linux**: `cache/accessor/darwin.go` is `//go:bui
 `cache/accessor/linux.go` is a cgo file that `dlopen`s `libsecret-1.so` and needs an unlocked Secret
 Service. Only `cache/accessor/windows.go` (DPAPI) is cgo-free, so `CGO_ENABLED=0` releases cannot ship a
 keychain store on two of the three target OSes. The CGO-free fallback already in the module is
-`cache/accessor/file` (plaintext, 0600); `zalando/go-keyring` is deliberately not mirrored and would not
-help on headless Linux either.
+`cache/accessor/file` (plaintext, 0600).
+
+PLAN.md therefore uses **envelope encryption**: a 32-byte data key in the OS keychain through
+`zalando/go-keyring` v0.2.8 (in `refs/GO_LIBS.md`), which is cgo-free everywhere — macOS shells out to
+`/usr/bin/security -i` and writes the secret on stdin (not argv), Linux uses pure-Go D-Bus (`godbus`),
+Windows uses wincred — and the MSAL cache AES-GCM-encrypted on disk. go-keyring cannot hold the cache
+itself: `ErrSetDataTooBig` above a 4096-byte `security` command on macOS and a 2560-byte blob on Windows
+(`keyring.go`, `keyring_darwin.go`, `keyring_windows.go`). Headless Linux without an unlocked Secret
+Service still falls back to the 0600 file. `keyring.MockInit()` gives tests an in-memory provider.
 
 Two more facts that shape the bot flow:
 
 - MSAL Go is **Preview**, not GA (`refs/entra/docs/identity-platform/msal-overview.md` lists "MSAL Go
   (Preview)"), and `refs/msal-go/README.md` says the latest code is on the `dev` branch.
-- MSAL Go itself calls `cacheAccessor.Export` after every successful acquisition, so the rotated cache is
+- MSAL Go has no broker (WAM) support (`refs/msal-go/docs/managedidentity_public_api.md`: "GO does not
+  have Brokers").
+- Refresh-token revocation (`refs/entra/docs/identity-platform/refresh-tokens.md`): device-code and
+  interactive tokens are "non-password-based"; they are revoked by an admin password reset in the Entra/M365
+  admin center, by the user revoking their tokens, or by an admin "revoke all" — **not** by a user password
+  change, SSPR, password expiry or single sign-out. Old refresh tokens are not revoked when a new one is
+  issued. The device-code window is 15 minutes (the doc gives no `expires_in` number).
+- MSAL Go itself calls `cacheAccessor.Export` after every successful **network** acquisition (refresh,
+  proactive refresh, interactive), not on a cache hit, so the rotated cache is
   written back automatically — implement `cache.ExportReplace` (or wrap an `accessor.Accessor` with
   msal-ext's `cache.New`) rather than re-serializing the blob by hand. Silent acquisition reuses a cached
   token until it is within 5 minutes of expiry, requires an account (`WithSilentAccount`), and re-reads the
@@ -369,6 +406,21 @@ Pin the recorder import path explicitly when writing Layer 7:
 with an incompatible API and sorts first in a grep. Also `kin-openapi`'s own dependencies are in the
 "not extracted" list, so its router cannot be grepped offline.
 
+## 12. GoReleaser (release pipeline)
+
+| Topic | Path |
+|---|---|
+| Homebrew **casks** (`brews`/formulas deprecated in v2.10), quarantine notes | `refs/goreleaser/www/content/customization/publish/homebrew_casks.md`, `refs/goreleaser/www/content/customization/publish/homebrew_formulas.md` |
+| Scoop, winget, nfpm (deb/rpm/apk) | `refs/goreleaser/www/content/customization/publish/scoop.md`, `refs/goreleaser/www/content/customization/publish/winget.md`, `refs/goreleaser/www/content/customization/package/nfpm.md` |
+| Signing (cosign keyless, `--bundle`) and cross-platform macOS notarize (quill) | `refs/goreleaser/www/content/customization/sign/sign.md`, `refs/goreleaser/www/content/customization/sign/notarize.md` |
+| SBOMs and GitHub build-provenance attestations | `refs/goreleaser/www/content/customization/sbom.md`, `refs/goreleaser/www/content/customization/publish/attestations.md` |
+| Changelog (`use: github`), pre-releases (`prerelease: auto`) | `refs/goreleaser/www/content/customization/publish/changelog.md`, `refs/goreleaser/www/content/customization/publish/scm/_index.md` |
+| Go builder (`mod_timestamp`, ldflags) | `refs/goreleaser/www/content/customization/builds/builders/go.md` |
+| CGO limitations (split/merge is **Pro**; else Docker cross or Zig) | `refs/goreleaser/www/content/resources/limitations/cgo.md`, `refs/goreleaser/www/content/customization/general/partial.md` |
+| Deprecations | `refs/goreleaser/www/content/resources/deprecations.md` |
+
+Pages marked `{{< g_featpro >}}` / "only available in GoReleaser Pro" are out of scope: the plan uses OSS.
+
 ## Known gaps
 
 Things a later phase will need that this mirror does not contain. Add the source or sparse path to
@@ -382,8 +434,10 @@ Things a later phase will need that this mirror does not contain. Add the source
   is unverified — add it as a fuzz case.
 - **A create-hosted-content endpoint.** The v1.0 api-reference has none (section 1); only the message POST
   creates hosted content.
-- **KQL property names** (`sent`, `IsMentioned`, `hasAttachment`) — see section 6.
-- **`zalando/go-keyring`** — deliberately dropped: the msal-ext file accessor is the CGO-free fallback.
+- **`sent` granularity** in Teams KQL — see section 6 (the property names themselves are documented).
+- **Search page size for `chatMessage`.** `search-api-overview.md` caps `size` at 25 for "message and
+  event"; whether that covers `chatMessage` is not stated.
+- **A chat-wide "last activity" field for channel roots** (to stop a `--since` walk early) — not documented.
 
 ## Keeping this file honest
 
