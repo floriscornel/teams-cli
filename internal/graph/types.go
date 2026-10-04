@@ -258,6 +258,17 @@ func (c Chat) Title(other ...ConversationMember) string {
 	return joinNames(names)
 }
 
+// LastActivity is when the chat last moved: its newest message when the preview
+// was expanded, otherwise the chat's own lastUpdatedDateTime. A chat with
+// neither (no messages at all) reports the zero time, which any window treats as
+// "older than everything".
+func (c Chat) LastActivity() time.Time {
+	if c.LastMessagePreview != nil && !c.LastMessagePreview.CreatedDateTime.IsZero() {
+		return c.LastMessagePreview.CreatedDateTime
+	}
+	return c.LastUpdatedDateTime
+}
+
 // Unread reports whether the chat's newest message is newer than the read
 // watermark. A chat that has never been read counts as unread; a chat with no
 // messages does not. PLAN.md:149 documents this rule: "A chat is unread when its

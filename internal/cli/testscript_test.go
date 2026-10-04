@@ -187,6 +187,18 @@ func scriptsModel(now time.Time) fakegraph.Model {
 				},
 			},
 			{
+				// Unread but stale: a meeting chat whose read state Teams never sets.
+				// It is what an unbounded inbox fills up with, so the window is asserted
+				// against it.
+				ID: "19:old-meeting@thread.v2", ChatType: fakegraph.ChatTypeMeeting, Topic: "Old meeting",
+				Members: []fakegraph.Member{{UserID: "user-1"}, {UserID: "user-2"}},
+				// No read watermark at all, which is what makes a meeting chat count as
+				// unread forever.
+				Messages: []fakegraph.Message{
+					{ID: "c-old", AuthorID: "user-2", Created: now.AddDate(0, 0, -400), Body: "<p>ancient</p>"},
+				},
+			},
+			{
 				ID: "19:release-train@thread.v2", ChatType: fakegraph.ChatTypeGroup, Topic: "Release train",
 				Members: []fakegraph.Member{{UserID: "user-1"}, {UserID: "user-2"}, {UserID: "user-3"}},
 				// Unread: the newest message (-45m) is newer than the watermark.

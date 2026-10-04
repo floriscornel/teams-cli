@@ -14,8 +14,16 @@ Show what is waiting for you: chats whose newest message is newer than
 their read watermark, and the messages that mention you. It never marks
 anything read.
 
+.PP
+Both halves look at the last 24h by default; --since/--until change the
+window and --all removes it, which lists every unread chat however old.
+
 
 .SH OPTIONS
+\fB--all\fP[=false]
+	every unread chat, however old (no window)
+
+.PP
 \fB--chats\fP[=false]
 	only unread chats
 
@@ -29,11 +37,11 @@ anything read.
 
 .PP
 \fB--since\fP=""
-	how far back to look for mentions (default 24h)
+	window to look back over (default 24h; a duration or a timestamp)
 
 .PP
 \fB--until\fP=""
-	ignore mentions newer than this
+	ignore activity newer than this
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS

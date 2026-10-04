@@ -8,6 +8,9 @@ Show what is waiting for you: chats whose newest message is newer than
 their read watermark, and the messages that mention you. It never marks
 anything read.
 
+Both halves look at the last 24h by default; --since/--until change the
+window and --all removes it, which lists every unread chat however old.
+
 ```
 teams unread [flags]
 ```
@@ -15,11 +18,12 @@ teams unread [flags]
 ### Options
 
 ```
+      --all            every unread chat, however old (no window)
       --chats          only unread chats
   -h, --help           help for unread
       --mentions       only unread mentions
-      --since string   how far back to look for mentions (default 24h)
-      --until string   ignore mentions newer than this
+      --since string   window to look back over (default 24h; a duration or a timestamp)
+      --until string   ignore activity newer than this
 ```
 
 ### Options inherited from parent commands

@@ -16,3 +16,15 @@ stdout 'unread chats: 1'
 
 exec teams unread --mentions --since 1h --json --jq '.mentions | length'
 stdout '^1$'
+
+# The window is the default: a chat that has been unread since 400 days ago is
+# not what the inbox is for, and --all is the discoverable way to see it.
+! stdout 'Old meeting'
+
+exec teams unread --chats --all
+stdout 'Old meeting'
+stderr 'every unread chat is listed'
+
+# A wide window reaches it, which is the same rule as --all but bounded.
+exec teams unread --chats --since 500d
+stdout 'Old meeting'

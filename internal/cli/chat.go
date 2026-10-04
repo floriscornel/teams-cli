@@ -3,6 +3,7 @@ package cli
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -53,6 +54,14 @@ func (a *App) newChatListCmd() *cobra.Command {
 			if flags.all || with != "" || unread {
 				limit = flags.limitOf(0)
 			}
+			// --unread means the same thing as `teams unread`: chats with unread
+			// activity in the last 24h, unless --all asks for every unread chat
+			// however old (a meeting chat read state is often never set, so the
+			// unbounded form fills up with years-old chats).
+			since := time.Time{}
+			if unread && !flags.all {
+				since = a.Clock.Now().Add(-defaultUnreadWindow)
+			}
 			a.Printer.Statusf("fetching chats...")
 			chats, err := client.ListChats(ctx, graph.ChatQuery{
 				Top: graph.MaxTopChats,
@@ -67,6 +76,7 @@ func (a *App) newChatListCmd() *cobra.Command {
 				// items per chat (refs/graph/api-reference/v1.0/api/chat-list.md:20).
 				Members: true,
 				Limit:   limit,
+				Since:   since,
 			})
 			if err != nil {
 				return err

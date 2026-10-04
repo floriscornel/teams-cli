@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"net/url"
+	"time"
 )
 
 // This file wraps the chat reads of PLAN.md Phase 3 ("chat list/show/read",
@@ -26,6 +27,12 @@ type ChatQuery struct {
 	// Filter is a raw OData $filter (topic eq '...' / chatType eq '...'), which
 	// the API documents but does not enumerate.
 	Filter string
+	// Since keeps only chats whose last activity is at or after it, and stops
+	// paging as soon as one is older: the listing is ordered by
+	// lastMessagePreview/createdDateTime desc, so everything after it is older
+	// too. It is what keeps `teams unread` to one round trip instead of walking
+	// every chat in the tenant.
+	Since time.Time
 }
 
 // ListChats returns the signed-in user's chats (GET /me/chats,
@@ -48,7 +55,23 @@ func (c *Client) ListChats(ctx context.Context, q ChatQuery) ([]Chat, error) {
 	if q.Filter != "" {
 		query.Set("$filter", q.Filter)
 	}
-	return ListAll[Chat](ctx, c, "/me/chats", query, q.Limit)
+	var out []Chat
+	err := EachPage[Chat](ctx, c, "/me/chats", query, func(page Page[Chat]) (bool, error) {
+		for _, chat := range page.Value {
+			if !q.Since.IsZero() && chat.LastActivity().Before(q.Since) {
+				return false, nil
+			}
+			out = append(out, chat)
+			if q.Limit > 0 && len(out) >= q.Limit {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetChat returns one chat (GET /me/chats/{chat-id},
