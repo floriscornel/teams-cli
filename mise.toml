@@ -52,7 +52,7 @@ golangci-lint = "2.13.2"
 
 [tasks.build]
 description = "Build the CLI into bin/teams"
-run = "go build -trimpath -ldflags \"-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o bin/teams ./cmd/teams"
+run = "go build -trimpath -ldflags \"-X github.com/floriscornel/teams-cli/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/floriscornel/teams-cli/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X github.com/floriscornel/teams-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o bin/teams ./cmd/teams"
 # The same file-target semantics the Makefile had: rebuild only when a source
 # or a module file is newer than the binary.
 sources = ["cmd/**/*.go", "internal/**/*.go", "go.mod", "go.sum"]
@@ -60,7 +60,7 @@ outputs = ["bin/teams"]
 
 [tasks.install]
 description = "Install the CLI into GOBIN"
-run = "go install -trimpath -ldflags \"-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" ./cmd/teams"
+run = "go install -trimpath -ldflags \"-X github.com/floriscornel/teams-cli/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/floriscornel/teams-cli/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X github.com/floriscornel/teams-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" ./cmd/teams"
 
 [tasks.tidy]
 description = "go mod tidy, then fail if it changed go.mod or go.sum"

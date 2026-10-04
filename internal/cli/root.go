@@ -25,7 +25,7 @@ import (
 
 // Version information, injected at build time with
 //
-//	-ldflags "-X main.version=… -X main.commit=… -X main.date=…"
+//	-ldflags "-X github.com/floriscornel/teams-cli/internal/cli.Version=… -X github.com/floriscornel/teams-cli/internal/cli.Commit=… -X github.com/floriscornel/teams-cli/internal/cli.Date=…"
 //
 // (see the build/install tasks in mise.toml and .goreleaser.yaml).
 var (

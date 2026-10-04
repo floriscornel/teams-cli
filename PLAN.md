@@ -332,7 +332,7 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
 ### Release process
 - **Versioning:** SemVer tags. Use `v0.x` until Phase 5 releases v1.0, and set `release.prerelease: auto` so `-rc.N` tags become GitHub pre-releases.
 - **Cutting a release:** squash-merge PRs whose titles follow Conventional Commits, which CI enforces. GoReleaser's `changelog.use: github` groups `feat`, `fix` and the rest into the release notes. A maintainer runs `git tag -s vX.Y.Z && git push --tags`. That keeps the process boring and fully local. Add release-please later only if collecting changelog entries by hand becomes a burden.
-- **Version info:** ldflags `-X main.version/commit/date`, with a `debug.ReadBuildInfo()` fallback so `go install` builds report their module version. Builds use `-trimpath` and `mod_timestamp: "{{ .CommitTimestamp }}"`, which makes them reproducible.
+- **Version info:** ldflags `-X github.com/floriscornel/teams-cli/internal/cli.Version/Commit/Date` — the package the variables live in, not `main`: `cmd/teams` is a wrapper, so `-X main.version` set nothing and v1.0.0 shipped `teams dev`. A `debug.ReadBuildInfo()` fallback (`internal/cli/buildinfo.go`) covers `go install` builds, and the CI smoke job asserts the built binary reports its version. Builds use `-trimpath` and `mod_timestamp: "{{ .CommitTimestamp }}"`, which makes them reproducible.
 - **Artifacts:** builds for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`. The archives are tar.gz, plus zip for Windows, and they carry the binary and the generated man pages. A `checksums.txt` covers them all.
 - **Supply chain**, all OSS:
   - `sboms:` uses syft to write one SBOM per archive;

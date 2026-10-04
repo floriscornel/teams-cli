@@ -7,12 +7,24 @@
 #
 #   scripts/smoke.sh bin/teams        # a locally built binary
 #   scripts/smoke.sh /usr/bin/teams   # an installed one
+#   scripts/smoke.sh dist/…/teams --expect-version SNAPSHOT
+#
+# --expect-version asserts that `teams version` carries that substring. The CI
+# smoke job passes the marker of the build it installed, which is what catches a
+# build whose ldflags never reached the version variables (v1.0.0 shipped
+# `teams dev`): a locally built binary may legitimately report a git-describe
+# value, so the assertion is opt-in rather than a default.
 #
 # It needs no Go, no Node and no network.
 
 set -euo pipefail
 
 binary="${1:-bin/teams}"
+expect_version=""
+if [ "${2:-}" = "--expect-version" ]; then
+  expect_version="${3:-}"
+  [ -n "$expect_version" ] || { echo "smoke: --expect-version needs a value" >&2; exit 2; }
+fi
 if [ ! -x "$binary" ]; then
   echo "smoke: $binary is not an executable file" >&2
   exit 1
@@ -43,6 +55,12 @@ case "$version_output" in
   teams\ *) pass "version: $version_output" ;;
   *) fail "unexpected version output: $version_output" ;;
 esac
+if [ -n "$expect_version" ]; then
+  case "$version_output" in
+    *"$expect_version"*) pass "version carries $expect_version" ;;
+    *) fail "version output does not carry '$expect_version': $version_output (did the ldflags reach internal/cli.Version?)" ;;
+  esac
+fi
 
 # 2. Help lists the user-facing commands.
 help_output=$("$binary" --help)
