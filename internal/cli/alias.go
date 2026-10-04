@@ -9,7 +9,7 @@ import (
 )
 
 // Alias commands. An alias is durable user memory that every command can use,
-// not only the AI ones (PLAN.md:297): `teams alias set boss alice@colorkrew.com`
+// not only the AI ones (PLAN.md:297): `teams alias set boss alice@contoso.com`
 // makes `teams chat read @boss` work.
 //
 // Aliases are state, not cache: `teams cache clear` leaves them alone, and they

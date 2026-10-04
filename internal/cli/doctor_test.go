@@ -40,7 +40,7 @@ func TestDoctorWarnsAboutTheKeyVaultGap(t *testing.T) {
 	h.mustRun("config", "set", "profiles.me.tenant", "colorkrew.com")
 	err := h.run("doctor", "--offline", "--json")
 	// The sign-in check cannot open the store, so doctor fails; the token-store
-	// row must explain the Phase 5 gap rather than crashing.
+	// row must explain the Phase 7 gap rather than crashing.
 	h.wantCode(err, output.CodeError)
 	checks := doctorRows(t, h.stdout.String())
 	storeCheck, ok := findCheck(checks, "token store")
@@ -50,7 +50,7 @@ func TestDoctorWarnsAboutTheKeyVaultGap(t *testing.T) {
 	if storeCheck.Status != statusWarn || !strings.Contains(storeCheck.Detail, "keyvault://") {
 		t.Errorf("token store check = %+v", storeCheck)
 	}
-	if !strings.Contains(storeCheck.Fix, "Phase 5") {
+	if !strings.Contains(storeCheck.Fix, "Phase 7") {
 		t.Errorf("fix = %q, want the phase pointer", storeCheck.Fix)
 	}
 }

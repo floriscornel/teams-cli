@@ -41,16 +41,24 @@ type messageFlags struct {
 	dryRun     bool
 }
 
-// bind registers the shared flags.
+// bind registers the flags every message-writing command shares.
 func (f *messageFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&f.md, "md", true, "treat the text as markdown (the default)")
 	cmd.Flags().BoolVar(&f.text, "text", false, "send the text verbatim, without markdown or HTML")
 	cmd.Flags().BoolVar(&f.html, "html", false, "send the text as HTML, sanitized against the Teams allow-list")
 	cmd.Flags().StringArrayVar(&f.mentions, "mention", nil, "person to mention (repeatable); the text must name them, e.g. @alice")
-	cmd.Flags().StringArrayVar(&f.files, "file", nil, "file to attach (repeatable); an image up to 4 MB is embedded inline")
 	cmd.Flags().StringVar(&f.subject, "subject", "", "subject line (channels and chats both store one)")
 	cmd.Flags().StringVar(&f.importance, "importance", "", "message importance: high or urgent (default normal)")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "print the Graph request without sending it")
+}
+
+// bindFiles adds --file, for the commands that can send an attachment: post and
+// reply. An edit cannot, because the delegated PATCH only changes properties of
+// an existing message (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45),
+// so `edit` does not offer the flag at all rather than refusing it after the
+// fact.
+func (f *messageFlags) bindFiles(cmd *cobra.Command) {
+	cmd.Flags().StringArrayVar(&f.files, "file", nil, "file to attach (repeatable); an image up to 4 MB is embedded inline")
 }
 
 // contentTypeMode decides which of --md/--text/--html applies. --md is the

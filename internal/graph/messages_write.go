@@ -117,13 +117,14 @@ type HostedContentUpload struct {
 	ContentType  string `json:"contentType,omitempty"`
 }
 
-// MessagePatch is the PATCH body of an edit. Delegated callers may change the
-// body and, on a channel message, the subject
-// (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45); the response
-// is the documented 204.
+// MessagePatch is the PATCH body of an edit: the caller supplies a chatMessage
+// with the properties it wants changed (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45).
+// The CLI sends the body, the subject and the importance; the response is the
+// documented 204.
 type MessagePatch struct {
-	Body    *ItemBody `json:"body,omitempty"`
-	Subject *string   `json:"subject,omitempty"`
+	Body       *ItemBody `json:"body,omitempty"`
+	Subject    *string   `json:"subject,omitempty"`
+	Importance *string   `json:"importance,omitempty"`
 }
 
 // replyWithQuoteBody is the replyWithQuote request: the message being quoted in
@@ -199,8 +200,8 @@ func (c *Client) replyWithQuote(ctx context.Context, chatID string, messageIDs [
 // UpdateMessage edits a message's body (and, when set, its subject).
 // Delegated PATCH answers 204 No Content.
 func (c *Client) UpdateMessage(ctx context.Context, target MessageTarget, patch MessagePatch) error {
-	if patch.Body == nil && patch.Subject == nil {
-		return usageError("graph: an edit must change the body or the subject")
+	if patch.Body == nil && patch.Subject == nil && patch.Importance == nil {
+		return usageError("graph: an edit must change the body, the subject or the importance")
 	}
 	path, err := target.path()
 	if err != nil {

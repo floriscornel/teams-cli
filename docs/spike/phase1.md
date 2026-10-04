@@ -1,6 +1,6 @@
 # Phase 1 spike — findings (2026-10-04)
 
-Live results against the Colorkrew tenant, using our own app registration ("Teams MCP Server")
+Live results against a corporate Microsoft 365 test tenant, using our own app registration ("Teams MCP Server")
 and the scope set teams-mcp ran with. The throwaway code is in `spike/` (`go run ./spike <command>`; see
 `spike/main.go` for the environment variables). The probes recorded status codes, counts and shapes only, never
 message content. Where a result contradicts a mirrored doc, the doc path is cited.
@@ -23,7 +23,7 @@ message content. Where a result contradicts a mirrored doc, the doc path is cite
 ### Consent in this tenant
 - The app's admin grant (AllPrincipals) covers `Channel.ReadBasic.All ChannelMessage.Edit ChannelMessage.Read.All ChannelMessage.Send Chat.Create Chat.ReadWrite Team.ReadBasic.All TeamMember.Read.All User.Read`.
 - A silent request for anything else fails with **AADSTS65001**. That covers `User.ReadBasic.All`, `People.Read`, `Files.Read.All`, `Files.ReadWrite.All`, `ChannelMessage.ReadWrite`, `ChatMessage.Send` and `Chat.ManageDeletion.All`.
-- The user-consent policy is `microsoft-user-default-low`, and **no** delegated permissions are classified as low. Users can't self-consent to anything useful, so PLAN.md's `chats` tier ("no admin consent needed") doesn't help at Colorkrew: **every scope change needs an admin**.
+- The user-consent policy is `microsoft-user-default-low`, and **no** delegated permissions are classified as low. Users can't self-consent to anything useful, so PLAN.md's `chats` tier ("no admin consent needed") doesn't help in that tenant: **every scope change needs an admin**.
 - `ChannelMessage.Edit` is granted, but it **does not** allow editing or deleting channel messages. Graph answers 403 with "API requires one of 'ChannelMessage.ReadWrite, Group.ReadWrite.All'", which matches the docs. Don't rely on `ChannelMessage.Edit`.
 - **Graph CLI Tools client** (`14d82eec-…`): its service principal is enabled and has no assignment requirement. The signed-in user holds a **per-user** grant that includes `User.ReadBasic.All` and the Teams scopes, so the default client works for that user. That proves nothing about other users. Not tested with a sign-in.
 

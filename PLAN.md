@@ -40,7 +40,7 @@ Each profile is stored in a config file resolved through `os.UserConfigDir()` (`
 default_profile = "me"
 
 [profiles.me]
-tenant = "colorkrew.com"          # or "common"
+tenant = "contoso.com"              # or "common"
 client_id = ""                    # empty → Microsoft Graph CLI Tools public client (14d82eec-…), same default as teams-mcp
 mode = "full"                     # or "read-only" → reduced scopes, write commands refuse
 cloud = "global"                  # global | usgov | china (Layer 5)
@@ -48,7 +48,7 @@ token_store = "auto"              # auto = encrypted file + key in OS keychain, 
 scopes = "full"                   # full | read-only | chats | explicit list (presets for the app registration)
 
 [profiles.bot]
-tenant = "colorkrew.com"
+tenant = "contoso.com"
 client_id = "<own app registration>"
 token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/teams-cache.json
 ```
@@ -58,11 +58,11 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
   - `teams chat add-member` needs no extra scope: `Chat.ReadWrite` is listed as the higher-privileged alternative to `ChatMember.ReadWrite`, and `ChatMember.ReadWrite` needs admin consent.
   - Add `User.ReadBasic.All`. Without it, `User.Read` reaches only `/me`: the spike saw 403 on `/users?$filter` and on `/users/{other}`, so `user search/show` and email → id lookup fail.
   - Add `People.Read` (no admin consent by the docs) for relevance-ranked person lookup (see Smart references).
-  - `ChannelMessage.Edit` is **not** a substitute for `ChannelMessage.ReadWrite`. A tenant may have granted it, as Colorkrew did, but the spike got 403 "requires ChannelMessage.ReadWrite" on PATCH and softDelete.
+  - `ChannelMessage.Edit` is **not** a substitute for `ChannelMessage.ReadWrite`. A tenant may have granted it, as the test tenant had, but the spike got 403 "requires ChannelMessage.ReadWrite" on PATCH and softDelete.
   - `Chat.ManageDeletion.All` (for `chat delete`) needs admin consent. Leave it out of every default set and request it incrementally when `chat delete` runs.
   - Do **not** add `offline_access`. MSAL drops any copies the caller passes and appends `openid`, `profile` and `offline_access` itself (`apps/internal/oauth/ops/accesstokens/accesstokens.go`).
 - **Admin consent is the common failure, so design for it.** In delegated mode, `ChannelMessage.Read.All`, `ChannelMessage.ReadWrite` and `TeamMember.Read.All` (as well as `ChatMember.ReadWrite` and `Chat.ManageDeletion.All`) require admin consent (`concepts/permissions-reference.md`). That means even **read-only channel access needs an admin**.
-  - **The spike showed it is worse than the docs suggest.** Colorkrew's user-consent policy is `microsoft-user-default-low`, with **no** permissions classified as low, so users cannot self-consent even to "no admin consent" scopes ([docs/spike/phase1.md](docs/spike/phase1.md)). The three tiers (`chats`, `read-only`, `full`) are therefore **presets that tell an admin what to consent**, not a consent-free on-ramp. Keep them, because other tenants differ.
+  - **The spike showed it is worse than the docs suggest.** The test tenant's user-consent policy is `microsoft-user-default-low`, with **no** permissions classified as low, so users cannot self-consent even to "no admin consent" scopes ([docs/spike/phase1.md](docs/spike/phase1.md)). The three tiers (`chats`, `read-only`, `full`) are therefore **presets that tell an admin what to consent**, not a consent-free on-ramp. Keep them, because other tenants differ.
   - **The feature matrix comes from the token.** The access token's `scp` lists **every scope consented for the app**, not just the ones requested, so `auth status` and `doctor` read `scp` and need no extra probing. A command whose scope is missing fails before it calls Graph, exits 3, and names the scope and the preset that has it.
   - `teams auth status --admin-request` prints the exact admin-consent and redirect-URI changes for the configured app, ready to paste into a ticket.
 - **Profile overrides:** a profile can override its scopes.
@@ -80,7 +80,7 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
 - The cache uses the envelope-encrypted store described under Libraries (key in the OS keychain, ciphertext on disk), or a 0600 file when no keychain exists. Either way it replaces the plaintext `~/.teams-mcp-token-cache.json` from [msal-cache.ts](refs/teams-mcp/src/msal-cache.ts).
 
 ### Service-account bot flow
-1. An admin runs `teams auth login --profile bot --device` once, signed in as the service account (for example `teams-bot@colorkrew.com`).
+1. An admin runs `teams auth login --profile bot --device` once, signed in as the service account (for example `teams-bot@contoso.com`).
 2. The MSAL cache, which holds the refresh token, is stored in a backend that headless runners can read:
    - **`keyvault://vault/secret`** (recommended for CI and cloud). Reads use `DefaultAzureCredential`: managed identity, workload identity federation from GitHub Actions, or Azure CLI. **The CLI writes back the rotated cache after each refresh.** Every use of a refresh token returns a new one, and refresh tokens expire after 90 days (`refresh-tokens.md`), so a secret that is never rewritten eventually dies. Four caveats from the docs and the SDK:
    - The whole cache goes in **one secret**, and our mirror does not document Key Vault's maximum secret size, so add a size guard and a fallback.
@@ -104,7 +104,7 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
    - handle CAE claims challenges: on a Graph 401 with a `WWW-Authenticate` claims challenge, re-acquire with the claims instead of retrying the revoked token. MSAL exposes `WithClaims` on every acquire call and `WithClientCapabilities([]string{"cp1"})` on the client, and passing claims makes silent acquisition skip the cached access token.
 - **Escape hatch:** env `TEAMS_ACCESS_TOKEN`. This is a short-lived token used as-is, the equivalent of `AUTH_TOKEN`. Validate `aud` and `exp`. Accept both the Graph app-ID GUID form `00000003-0000-0000-c000-000000000000` (which is what the spike's real delegated tokens carried) and the URL form `https://graph.microsoft.com`, and surface a clear error when either is wrong. Be explicit in the docs that this is a decode-only check on an unsigned token, so it catches the common mistakes (wrong audience, expired) and is not a security control; it does not check scopes either, so a token with the right `aud` and the wrong scopes fails later with 403.
 - **Company recommendation:** register a dedicated Entra app (public client, the delegated scopes above, admin-consented) instead of relying on the Graph CLI Tools client ID. Tenants often block that client.
-  - The registration needs `http://localhost` as a **Mobile and desktop** redirect URI. MSAL Go listens on `http://localhost:<ephemeral port>`, and Entra ignores the port for localhost (`refs/entra/docs/identity-platform/reply-url.md`). Without it, the browser flow fails with AADSTS50011, as the spike saw with the Colorkrew app.
+  - The registration needs `http://localhost` as a **Mobile and desktop** redirect URI. MSAL Go listens on `http://localhost:<ephemeral port>`, and Entra ignores the port for localhost (`refs/entra/docs/identity-platform/reply-url.md`). Without it, the browser flow fails with AADSTS50011, as the spike saw with the test tenant's app.
   - "Allow public client flows" must be on for device code.
   - The registration needs an owner, so changes don't need a ticket.
   - `teams auth login` falls back to device code automatically on AADSTS50011, and prints the fix.
@@ -163,9 +163,9 @@ Notes that the docs force on this surface:
 
   Parse tolerantly: the channel ID appears raw (`19:…@thread.tacv2`) in the docs but percent-encoded in Graph's own `webUrl`, parameter order is not stable, and unknown parameters must be ignored. Reject the non-message families (`/l/app`, `/l/entity`, `/l/task`, `/l/call`, `/l/meeting*`) with a usage error. A channel message link **without `groupId` is unresolvable** — every channel-message Graph route needs the team id and there is no channel→team lookup — so fail with exit 4 or require `--team`. The newer `teams.cloud.microsoft` host is not in the mirror: accept it defensively and cover it with a fuzz case.
 - a **name path**: `Engineering/General`, `Engineering/General/<msgId>`. The CLI matches names case-insensitively, falls back to fuzzy matching, and asks you to pick when a name is ambiguous on a TTY. It errors in non-interactive mode.
-- a **person**: `@alice` or `alice@colorkrew.com` means your 1:1 chat with that person. There is no documented person-to-chat lookup, so this is either a `GET /me/chats?$expand=members` scan (documented cap of 25 members, though the spike saw 116; `$top` max 50) or a `POST /chats` one-on-one create, which the API documents as returning the existing chat ("Only one one-on-one chat can exist between two members", `chat-post.md`). Pick per mode: the scan for `read`, the create for `write` — in read-only mode the person form must fail with usage guidance rather than write. The scan's result is cached (person → chat id), so it runs once per person.
+- a **person**: `@alice` or `alice@contoso.com` means your 1:1 chat with that person. There is no documented person-to-chat lookup, so this is either a `GET /me/chats?$expand=members` scan (documented cap of 25 members, though the spike saw 116; `$top` max 50) or a `POST /chats` one-on-one create, which the API documents as returning the existing chat ("Only one one-on-one chat can exist between two members", `chat-post.md`). Pick per mode: the scan for `read`, the create for `write` — in read-only mode the person form must fail with usage guidance rather than write. The scan's result is cached (person → chat id), so it runs once per person.
   - **Resolving a name to a person** goes: alias → entity cache → **members of the user's chats and teams** → `GET /me/people?$search=<q>` (if `People.Read`) → `GET /users?$filter=startswith(...)` (if `User.ReadBasic.All`). Membership needs no extra scope (`Chat.ReadWrite` / `TeamMember.Read.All`), and it carries `userId` and usually `email` (the spike saw 37 of 37 and 35 of 37), so `@name` and `--mention` keep working even where the directory scopes are not granted. Membership scans are cached. `/me/people` is "ordered by relevance … determined by the user's communication and collaboration patterns", and supports fuzzy `$search` (`user-list-people.md`, `People.Read`, no admin consent). It is the best tool for "@yuki" meaning *the* Yuki you work with, rather than the first of twelve in the directory.
-- an **alias**: `teams alias set boss alice@colorkrew.com`, `teams alias set standup Engineering/Daily`. Aliases are explicit, durable and per profile, and they work in every command and in AI prompts.
+- an **alias**: `teams alias set boss alice@contoso.com`, `teams alias set standup Engineering/Daily`. Aliases are explicit, durable and per profile, and they work in every command and in AI prompts.
 - a **raw ID**.
 - names are resolved through the per-profile **entity cache** (see Local data), with a TTL of about 1h for names and 7 days for person → user id and person → 1:1 chat id. `--refresh` bypasses it.
 
@@ -268,7 +268,7 @@ The CLI keeps four kinds of local data. Each has its own lifetime and deletion s
 ## AI features (opt-in)
 - **Enabling:** `teams ai setup` stores the provider, model and key. The key goes into the keychain through go-keyring (an API key is far under its size caps). Env vars `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY` and `OPENAI_BASE_URL` also work, and so does `ANTHROPIC_FOUNDRY_API_KEY` for the Foundry provider. **Foundry can also authenticate with Entra**: `foundry.go` takes an `AzureADTokenProvider` function with the scope `https://ai.azure.com/.default`, which we can feed from `azidentity`, so a company deployment needs no API key at all. Keys are never written to config files. AI subcommands are hidden or disabled until a provider is configured.
 - **Model:** the default is `claude-sonnet-5-5`; `--model` overrides it; `claude-haiku-4-5` is suggested for cheap bulk summaries. The model is configurable per profile. Both IDs were verified against the pinned SDK (v1.78.0, [message.go](refs/anthropic/message.go)); `claude-sonnet-4-5` is deprecated (EOL 2026-11-30) and migrates to `sonnet-5-5`, so do not "correct" these from memory.
-- **Language:** `ai.language = "auto" | "en" | "ja" | …`. With `auto`, the CLI answers in the language of the question, and summaries use the dominant language of the source messages. Colorkrew channels mix English and Japanese, so this is a first-class setting, not a prompt afterthought.
+- **Language:** `ai.language = "auto" | "en" | "ja" | …`. With `auto`, the CLI answers in the language of the question, and summaries use the dominant language of the source messages. A multilingual tenant mixes languages (English and Japanese, in the test tenant), so this is a first-class setting, not a prompt afterthought.
 - **`summarize`:** fetches messages within a token budget, converts HTML to markdown, and runs a single call. If the content is larger than the budget, it chunks the messages (map-reduce). Output is a summary, decisions, action items and open questions, each linked to its message `webUrl`. Budgeting has no local tokenizer in the SDK, so it costs a `Messages.CountTokens` round trip per chunk: count once per chunk, cache the count, and make the Layer 8 fake cover it.
 - **`ask`:** a tool-use loop. The LLM writes KQL, calls `search`, reads threads, and iterates up to N steps. It answers with citations. The SDK's built-in tool runner is Beta-only, so this loop is ours, written against the stable Messages API (streaming, tool use and tool results are all stable).
 - **`draft`:** reads the thread and drafts a reply. `--post` shows the draft and asks for confirmation before sending; `--yes` is required in non-interactive mode.
@@ -290,7 +290,7 @@ Goal: follow-ups work the way they do in a chat UI ("and what did Bob say about 
 ### Memory
 There are two different things here, and the plan keeps them apart:
 1. **Entity cache** (automatic, rebuildable, in the cache dir): people → user ids, person → 1:1 chat id, team and channel names → ids. It is shared with `internal/ref`, so a person the AI resolved is resolved instantly next time in `teams post @yuki …`, and the other way around. The AI reads it through a `resolve_person` tool, never as a prompt dump.
-2. **User memory** (durable, curated, in the state dir): short facts and preferences such as "I lead the Payments team", "'the release channel' means Engineering/Releases", "summaries in Japanese", "Kenji = kenji.tanaka@colorkrew.com".
+2. **User memory** (durable, curated, in the state dir): short facts and preferences such as "I lead the Payments team", "'the release channel' means Engineering/Releases", "summaries in Japanese", "Kenji = kenji.tanaka@contoso.com".
    - `teams ai memory add|list|edit|rm|clear`. `edit` opens `$EDITOR` on a plain TOML or markdown file, so the memory is inspectable and greppable.
    - The model gets a `remember` tool, but it can only **propose** a memory: on a TTY the CLI shows the proposal and asks "Save to memory? [y/N]", and in non-interactive mode proposals are dropped (logged with `-v`). Nothing reaches memory without the user seeing it.
    - Memory goes into the system prompt (it is small, capped at about 2k tokens, with a warning above that) and sits inside the cached prefix.
@@ -329,7 +329,7 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
 **Tests never need `refs/`.** The Layer 6 inputs (the trimmed spec and the route list) are generated from `refs/` but **committed**. Only `refs-check` touches the mirror, so ordinary PR CI stays fast and works offline.
 
 ### Release process
-- **Versioning:** SemVer tags. Use `v0.x` until Phase 7, and set `release.prerelease: auto` so `-rc.N` tags become GitHub pre-releases.
+- **Versioning:** SemVer tags. Use `v0.x` until Phase 5 releases v1.0, and set `release.prerelease: auto` so `-rc.N` tags become GitHub pre-releases.
 - **Cutting a release:** squash-merge PRs whose titles follow Conventional Commits, which CI enforces. GoReleaser's `changelog.use: github` groups `feat`, `fix` and the rest into the release notes. A maintainer runs `git tag -s vX.Y.Z && git push --tags`. That keeps the process boring and fully local. Add release-please later only if collecting changelog entries by hand becomes a burden.
 - **Version info:** ldflags `-X main.version/commit/date`, with a `debug.ReadBuildInfo()` fallback so `go install` builds report their module version. Builds use `-trimpath` and `mod_timestamp: "{{ .CommitTimestamp }}"`, which makes them reproducible.
 - **Artifacts:** builds for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`. The archives are tar.gz, plus zip for Windows, and they carry the binary and the generated man pages. A `checksums.txt` covers them all.
@@ -360,6 +360,10 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
 ## Implementation phases
 
 Phase 0 is complete: the mirror, `refs/INDEX.md` and `refs/MANIFEST.md` are in the repo, and `scripts/fetch-refs.sh --verify` is the gate. Every phase below is a heading so work can be scoped to one phase at a time.
+
+**Current order (revised 2026-10-04):** 4 Write (done) → **5 Polish and v1.0** → 6 AI → 7 Bot/headless. The polish
+phase and the bot/headless phase traded places so that the user-facing v1.0 does not wait for the service-account
+store; see the note under Phase 5.
 
 ### Phase 0: Local reference docs mirror (done)
 **Goal:** every agent or developer can `rg` the authoritative docs offline instead of guessing APIs or web-fetching mid-task.
@@ -420,7 +424,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
   - `viewpoint` after mark-read on a normal chat;
   - the timezone of a bare-date `sent` boundary;
   - testscript coverage merging (in Phase 2).
-- **Admin ticket** (needed before `full` works at Colorkrew):
+- **Admin ticket** (needed before `full` works in a tenant that gates consent on an admin):
   - the `http://localhost` redirect;
   - consent for `User.ReadBasic.All`, `ChannelMessage.ReadWrite` and (optionally) `Files.Read.All`, `Files.ReadWrite.All` and `People.Read`;
   - an owner for the app registration.
@@ -440,7 +444,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - **`cloud = "china"` needs `graph_base_url`.** The mirror documents the China authority but *not* the Graph service root (`refs/entra/docs/identity-platform/authentication-national-cloud.md:81` defers to a page that is not vendored), so the profile must supply it rather than us guessing a host.
 - **The token store's key is created only when tokens are stored.** A first `teams auth status` never touches the OS keychain: probing it on every command cost about a second on macOS, and asking a missing keychain to *create* an item pops a blocking dialog. `TEAMS_NO_KEYCHAIN=1` forces the plaintext file for containers and CI.
 - **`TEAMS_ACCESS_TOKEN` skips the scope pre-check** by design (PLAN.md:105), so the `scp`-based feature matrix is only consulted for real MSAL sessions.
-- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 5 (`token_store = "keyvault://…"` fails with a Phase 5 pointer); `mise run snapshot` downloads GoReleaser on first use (it is a task-scoped tool); the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
+- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 7 (`token_store = "keyvault://…"` fails with a Phase 7 pointer); `mise run snapshot` downloads GoReleaser on first use (it is a task-scoped tool); the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
 - **Three live-tenant items still need a human:** the redirect URI, admin consent, and an app-registration owner (the Phase 1 admin ticket).
 
 #### Revision 2026-10-04 (dev loop and releases)
@@ -598,25 +602,35 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - **The seed gained a fourth user** (`Carol Chen`), because `chat add-member` needs someone who is not already in every
   seeded chat.
 - **Open for later phases:** `mise run smoke-live` still points at `internal/testing/live`, which does not exist
-  yet — the write scenario PLAN.md describes (post → read → react → edit → delete → search, plus a bot-profile run
-  through Key Vault) is what should land there; a large upload's chunking is covered by a unit test but has never run
+  yet — the write scenario PLAN.md describes (post → read → react → edit → delete → search, plus the bot-profile run
+  Phase 7 adds through Key Vault) is what should land there; a large upload's chunking is covered by a unit test but has never run
   against a live drive;
   a chat upload relies on the `Microsoft Teams Chat Files` folder existing (Teams creates it — the CLI does not);
   `edit` cannot add or remove attachments, which the delegated PATCH documents and the CLI therefore refuses;
   `--subject` on a chat is sent because the spike stored it, but no live tenant has been asked to render it; and the
   accepted reaction set is Graph's, so the CLI passes any string through.
 
-### Phase 5: Bot/headless
-file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.
+### Phase 5: Polish and v1.0 (was Phase 7; swapped 2026-10-04)
+completions, man pages, docs site, update check — and the v1.0 tag.
+Extra install channels are *not* part of v1.0: releases stay GitHub-only (archive download or `go install`), and a Homebrew cask (+ notarization), Scoop, winget, nfpm packages or a `curl | sh` installer would each need a second repository, a secret or a review queue. Revisit only if users ask (see "Install channels" above).
+
+**Why this moved ahead of the bot work.** Nothing a v1.0 user needs was left in the old Phase 5: the
+service-account store (Key Vault), `auth export/refresh` and the CI guide are for *operators*, and they are the
+slowest items to finish because they need a second identity, an Azure subscription and a runner. The polish work is
+already half done (docs are generated, man pages ship in the archives, the release pipeline is signed and attested)
+and it is what makes the CLI feel finished. So: ship v1.0 on the delegated-user story, then the AI features
+(Phase 6), and put the bot/headless work last (Phase 7) where it can be designed against a real deployment.
+The swap moves no scope between phases; it changes the order, and it means v1.0 ships **before** the AI features —
+which stay opt-in and hidden until a provider is configured, so their absence is not a broken promise.
 
 ### Phase 6: AI
 provider abstraction (Anthropic, OpenAI-compatible, Foundry with Entra), `summarize`, `draft`, `ask`, consent, `--show-prompt`;
 then sessions (`-c`/`--resume`, history retention, prompt caching), curated memory with confirm-to-save, `catchup` + watches,
 and the REPL. Ship the first four before the UX layer so the history format is designed against real usage.
 
-### Phase 7: Polish and v1.0
-completions, man pages, docs site, update check.
-Extra install channels are *not* part of v1.0: releases stay GitHub-only (archive download or `go install`), and a Homebrew cask (+ notarization), Scoop, winget, nfpm packages or a `curl | sh` installer would each need a second repository, a secret or a review queue. Revisit only if users ask (see "Install channels" above).
+### Phase 7: Bot/headless (was Phase 5; swapped 2026-10-04)
+file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.
+Needed only for the service-account identity, which is why it now lands after v1.0.
 
 ## Automated testing strategy (no real Graph API in CI)
 We can't test against the real Graph API, so the plan is a **high-fidelity fake Microsoft cloud** plus **contract checks against Microsoft's published OpenAPI spec**. The fakes stay honest by validating them against that spec, so tests don't drift into testing our own assumptions.

@@ -41,18 +41,16 @@ func (a *App) newEditCmd() *cobra.Command {
 		Use:   "edit <message> [text|-]",
 		Short: "Edit a message you sent",
 		Long: "Edit a message's body (and, with --subject, its subject).\n\n" +
-			"Only the body and the subject are editable, which is what the delegated PATCH\n" +
-			"documents (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45);\n" +
-			"attachments cannot be added to an existing message, so --file is refused.",
+			"Only properties of the message are editable - the body, the subject and the\n" +
+			"importance - which is what the delegated PATCH documents\n" +
+			"(refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45). Attachments\n" +
+			"cannot be added to an existing message, so this command has no --file flag.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			mode, err := flags.validate(cmd)
 			if err != nil {
 				return err
-			}
-			if len(flags.files) > 0 {
-				return output.Usagef("--file cannot be used with edit: a PATCH only changes the body and the subject")
 			}
 			text, err := a.readBodyText(args[1:])
 			if err != nil {
@@ -83,6 +81,12 @@ func (a *App) newEditCmd() *cobra.Command {
 			if cmd.Flags().Changed("subject") {
 				subject := payload.Post.Subject
 				patch.Subject = &subject
+			}
+			if cmd.Flags().Changed("importance") {
+				// A PATCH takes any property of the message, and importance is one
+				// of the few a reader sees; the MCP sends it on an edit too.
+				importance := payload.Post.Importance
+				patch.Importance = &importance
 			}
 			path := messageTargetPath(target)
 			if flags.dryRun {

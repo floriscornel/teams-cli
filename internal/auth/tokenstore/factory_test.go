@@ -71,7 +71,7 @@ func TestOpenRejectsBadSpecs(t *testing.T) {
 	if !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("keyvault error = %v, want ErrNotImplemented with a phase pointer", err)
 	}
-	if !strings.Contains(err.Error(), "Phase 5") {
+	if !strings.Contains(err.Error(), "Phase 7") {
 		t.Errorf("keyvault error = %v, want it to name the phase", err)
 	}
 	if _, err := Open(paths, config.Effective{Name: "me", TokenStore: "keyvault://vault"}, nil); err == nil {

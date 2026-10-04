@@ -7,7 +7,7 @@ import (
 )
 
 // newVersionCmd prints the build information. `--check` (the update check) is
-// Phase 7; it is never automatic in non-interactive mode and can be disabled
+// Phase 5; it is never automatic in non-interactive mode and can be disabled
 // with TEAMS_NO_UPDATE_CHECK.
 func (a *App) newVersionCmd() *cobra.Command {
 	return &cobra.Command{

@@ -40,7 +40,7 @@ func Open(paths store.Paths, eff config.Effective, kr Keyring) (Store, error) {
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("token_store %s: %w (the Key Vault backend lands in Phase 5; use auto or file for now)", target, ErrNotImplemented)
+		return nil, fmt.Errorf("token_store %s: %w (the Key Vault backend lands in Phase 7; use auto or file for now)", target, ErrNotImplemented)
 	default:
 		return nil, fmt.Errorf("unknown token_store %q", spec)
 	}

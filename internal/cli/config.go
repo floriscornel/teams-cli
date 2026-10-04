@@ -172,7 +172,7 @@ func profileField(profile config.Profile, field, key string) (string, error) {
 }
 
 // setConfigValue applies a dotted key, creating a profile when it does not exist
-// yet so `teams config set profiles.bot.tenant colorkrew.com` works from nothing.
+// yet so `teams config set profiles.bot.tenant contoso.com` works from nothing.
 func setConfigValue(cfg *config.Config, key, value string) error {
 	parts := strings.Split(key, ".")
 	switch {

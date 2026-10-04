@@ -110,9 +110,9 @@ case "$ref_code:$ref_output" in
 esac
 
 # 5. Config round trip, written 0600.
-"$binary" config set profiles.bot.tenant colorkrew.com >/dev/null
+"$binary" config set profiles.bot.tenant contoso.example >/dev/null
 got=$("$binary" config get profiles.bot.tenant)
-[ "$got" = "colorkrew.com" ] || fail "config get returned '$got'"
+[ "$got" = "contoso.example" ] || fail "config get returned '$got'"
 if [ -e "$TEAMS_CONFIG" ]; then
   mode=$(stat -c '%a' "$TEAMS_CONFIG" 2>/dev/null || stat -f '%Lp' "$TEAMS_CONFIG")
   [ "$mode" = "600" ] || fail "the config file is $mode, want 600"

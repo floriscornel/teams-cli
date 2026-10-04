@@ -15,7 +15,7 @@ import (
 )
 
 // Aliases: the explicit, durable, per-profile names PLAN.md:168 gives every
-// command and the AI prompts - `teams alias set boss alice@colorkrew.com`,
+// command and the AI prompts - `teams alias set boss alice@contoso.com`,
 // `teams alias set standup Engineering/Daily`.
 //
 // They live in the state directory (Paths.AliasesFile()), not in the cache:

@@ -40,11 +40,13 @@ type hostedContentCreateWire struct {
 	ContentType  string `json:"contentType,omitempty"`
 }
 
-// messagePatchWire is the PATCH body: only the body and subject are editable
-// (refs/graph/api-reference/v1.0/api/chatmessage-update.md).
+// messagePatchWire is the PATCH body: a chatMessage carrying the properties to
+// change. The CLI sends the body, the subject and the importance, which are the
+// ones a reader sees (refs/graph/api-reference/v1.0/api/chatmessage-update.md).
 type messagePatchWire struct {
-	Body    *itemBody `json:"body,omitempty"`
-	Subject *string   `json:"subject,omitempty"`
+	Body       *itemBody `json:"body,omitempty"`
+	Subject    *string   `json:"subject,omitempty"`
+	Importance *string   `json:"importance,omitempty"`
 }
 
 // reactionWireRequest is the setReaction/unsetReaction body: the reactionType
@@ -221,8 +223,12 @@ func handlePatchMessage(c *handlerCtx) {
 	if !c.decodeBody(&in) {
 		return
 	}
-	if in.Body == nil && in.Subject == nil {
-		c.fail(badRequestf("The request body must contain a 'body' or 'subject' property."))
+	if in.Body == nil && in.Subject == nil && in.Importance == nil {
+		c.fail(badRequestf("The request body must contain a 'body', 'subject' or 'importance' property."))
+		return
+	}
+	if in.Importance != nil && *in.Importance != "normal" && *in.Importance != "high" && *in.Importance != "urgent" {
+		c.fail(badRequestf("'importance' must be normal, high or urgent, got %q.", *in.Importance))
 		return
 	}
 	st := c.s.st
@@ -238,6 +244,9 @@ func handlePatchMessage(c *handlerCtx) {
 	}
 	if in.Subject != nil {
 		msg.subject = *in.Subject
+	}
+	if in.Importance != nil {
+		msg.importance = *in.Importance
 	}
 	now := c.s.now()
 	msg.edited = now

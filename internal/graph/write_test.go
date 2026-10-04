@@ -255,8 +255,9 @@ func TestUpdateMessage(t *testing.T) {
 	ctx := context.Background()
 	body := ItemBody{Content: "<p>edited</p>", ContentType: "html"}
 	subject := "new subject"
+	importance := "urgent"
 	if err := c.UpdateMessage(ctx, MessageTarget{TeamID: writeTeamID, ChannelID: writeChannelID, MessageID: writeRoot},
-		MessagePatch{Body: &body, Subject: &subject}); err != nil {
+		MessagePatch{Body: &body, Subject: &subject, Importance: &importance}); err != nil {
 		t.Fatalf("UpdateMessage: %v", err)
 	}
 	call := readCalls(t, srv, http.MethodPatch, "/teams/"+writeTeamID+"/channels/"+writeChannelID+"/messages/"+writeRoot)[0]
@@ -266,6 +267,9 @@ func TestUpdateMessage(t *testing.T) {
 	}
 	if sent.Body == nil || sent.Body.Content != "<p>edited</p>" || sent.Subject == nil || *sent.Subject != "new subject" {
 		t.Errorf("patch = %+v, want the body and subject", sent)
+	}
+	if sent.Importance == nil || *sent.Importance != "urgent" {
+		t.Errorf("patch = %+v, want the importance", sent)
 	}
 
 	// An empty patch is a usage error rather than a request Graph would reject.

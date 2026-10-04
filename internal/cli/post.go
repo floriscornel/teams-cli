@@ -86,6 +86,7 @@ func (a *App) newPostCmd() *cobra.Command {
 		},
 	}
 	flags.bind(cmd)
+	flags.bindFiles(cmd)
 	cmd.Flags().StringVar(&teamFlag, "team", "", "team the channel belongs to, when the reference does not say")
 	return cmd
 }
@@ -165,6 +166,7 @@ func (a *App) newReplyCmd() *cobra.Command {
 		},
 	}
 	flags.bind(cmd)
+	flags.bindFiles(cmd)
 	cmd.Flags().StringVar(&teamFlag, "team", "", "team the channel belongs to, when the reference does not say")
 	return cmd
 }

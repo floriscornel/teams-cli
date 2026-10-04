@@ -29,9 +29,15 @@ stdout 'edited c-2'
 exec teams chat read 19:bob@thread.v2 --json --jq '[.[].body.content] | join("|")'
 stdout 'sure, at 12:30'
 
-# edit cannot add attachments: a PATCH only changes the body and the subject.
+# edit offers no --file: a PATCH only changes properties of an existing message.
 ! exec teams edit Engineering/General/m-1002 hi --file notes.txt
-stderr 'only changes the body and the subject'
+stderr 'unknown flag: --file'
+
+# The importance is a property like the subject, so an edit can change it.
+exec teams edit Engineering/General/m-1002 --importance urgent --text 'urgent words'
+stdout 'edited m-1002'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].importance'
+stdout 'urgent'
 
 # react adds one reaction per user, and --remove takes it back.
 exec teams react Engineering/General/m-1002 👍

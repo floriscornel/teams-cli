@@ -31,7 +31,7 @@ const (
 	// default teams-mcp ships (refs/teams-mcp/src/services/graph.ts:6).
 	DefaultClientID = "14d82eec-204b-4c2f-b7e8-296a70dab67e"
 	// DefaultTenant matches the MCP's `common` authority
-	// (refs/teams-mcp/src/services/graph.ts:7). Colorkrew users set their own.
+	// (refs/teams-mcp/src/services/graph.ts:7). Users in a corporate tenant set their own.
 	DefaultTenant = "common"
 	// DefaultCloud is the commercial cloud.
 	DefaultCloud = "global"

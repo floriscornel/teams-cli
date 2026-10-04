@@ -9,7 +9,8 @@ import (
 
 // Scope preset names accepted by `scopes`. Each preset is a *preset for the app
 // registration*, not a promise that the tenant will let a user consent to it:
-// at Colorkrew every scope needs an admin (docs/spike/phase1.md:26).
+// in the tenant the spike ran against, every scope needs an admin
+// (docs/spike/phase1.md:26).
 const (
 	ScopePresetChats    = "chats"
 	ScopePresetReadOnly = "read-only"
