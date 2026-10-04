@@ -45,7 +45,7 @@ client_id = ""                    # empty → Microsoft Graph CLI Tools public c
 mode = "full"                     # or "read-only" → reduced scopes, write commands refuse
 cloud = "global"                  # global | usgov | china (Layer 5)
 token_store = "auto"              # auto = encrypted file + key in OS keychain, 0600 plaintext file if no keychain | file | keyvault://… | file://…
-scopes = "full"                   # full | read-only | chats (no admin consent needed) | explicit list
+scopes = "full"                   # full | read-only | chats | explicit list (presets for the app registration)
 
 [profiles.bot]
 tenant = "colorkrew.com"
@@ -56,15 +56,15 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
   - **read-only** adds `Files.Read.All`. Channel files live in the team's SharePoint drive, and `Files.Read` covers only "the signed-in user's files"; `GET …/filesFolder` lists `Files.Read.All` as least privileged (`includes/permissions/channel-get-filesfolder-permissions.md`).
   - **full** keeps the MCP's `Files.ReadWrite.All`, which channel uploads into SharePoint need; `Files.ReadWrite` would suffice only for the chat-upload path into your own OneDrive.
   - `teams chat add-member` needs no extra scope: `Chat.ReadWrite` is listed as the higher-privileged alternative to `ChatMember.ReadWrite`, and `ChatMember.ReadWrite` needs admin consent.
-  - Add `People.Read` (no admin consent) for relevance-ranked person lookup (see Smart references).
+  - Add `User.ReadBasic.All`. Without it, `User.Read` reaches only `/me`: the spike saw 403 on `/users?$filter` and on `/users/{other}`, so `user search/show` and email → id lookup fail.
+  - Add `People.Read` (no admin consent by the docs) for relevance-ranked person lookup (see Smart references).
+  - `ChannelMessage.Edit` is **not** a substitute for `ChannelMessage.ReadWrite`. A tenant may have granted it, as Colorkrew did, but the spike got 403 "requires ChannelMessage.ReadWrite" on PATCH and softDelete.
   - `Chat.ManageDeletion.All` (for `chat delete`) needs admin consent. Leave it out of every default set and request it incrementally when `chat delete` runs.
   - Do **not** add `offline_access`. MSAL drops any copies the caller passes and appends `openid`, `profile` and `offline_access` itself (`apps/internal/oauth/ops/accesstokens/accesstokens.go`).
-- **Admin consent is the common failure, so design for it.** In delegated mode, `ChannelMessage.Read.All`, `ChannelMessage.ReadWrite` and `TeamMember.Read.All` (as well as `ChatMember.ReadWrite` and `Chat.ManageDeletion.All`) require admin consent (`concepts/permissions-reference.md`). That means even **read-only channel access needs an admin**. Ship three tiers:
-  - `chats` = user-consentable only: `User.Read`, `User.ReadBasic.All`, `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `Chat.ReadWrite`, `People.Read`, `Files.ReadWrite`. A user can start with chats on day one, before an admin has acted (if the tenant's user-consent settings allow it at all; check per tenant);
-  - `read-only`;
-  - `full`.
-
-  Both `teams auth status` and `teams doctor` print the granted scopes as a feature matrix. A command whose scope is missing fails before it calls Graph, exits 3, and names the missing scope and the tier that has it.
+- **Admin consent is the common failure, so design for it.** In delegated mode, `ChannelMessage.Read.All`, `ChannelMessage.ReadWrite` and `TeamMember.Read.All` (as well as `ChatMember.ReadWrite` and `Chat.ManageDeletion.All`) require admin consent (`concepts/permissions-reference.md`). That means even **read-only channel access needs an admin**.
+  - **The spike showed it is worse than the docs suggest.** Colorkrew's user-consent policy is `microsoft-user-default-low`, with **no** permissions classified as low, so users cannot self-consent even to "no admin consent" scopes ([docs/spike/phase1.md](docs/spike/phase1.md)). The three tiers (`chats`, `read-only`, `full`) are therefore **presets that tell an admin what to consent**, not a consent-free on-ramp. Keep them, because other tenants differ.
+  - **The feature matrix comes from the token.** The access token's `scp` lists **every scope consented for the app**, not just the ones requested, so `auth status` and `doctor` read `scp` and need no extra probing. A command whose scope is missing fails before it calls Graph, exits 3, and names the scope and the preset that has it.
+  - `teams auth status --admin-request` prints the exact admin-consent and redirect-URI changes for the configured app, ready to paste into a ticket.
 - **Profile overrides:** a profile can override its scopes.
 - **Selecting a profile:** `--profile`, or env `TEAMS_PROFILE`, or `default_profile`.
 
@@ -102,8 +102,13 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
 
      Ship a documented re-login runbook, and make `teams auth status` detect `invalid_grant` and exit 3;
    - handle CAE claims challenges: on a Graph 401 with a `WWW-Authenticate` claims challenge, re-acquire with the claims instead of retrying the revoked token. MSAL exposes `WithClaims` on every acquire call and `WithClientCapabilities([]string{"cp1"})` on the client, and passing claims makes silent acquisition skip the cached access token.
-- **Escape hatch:** env `TEAMS_ACCESS_TOKEN`. This is a short-lived token used as-is, the equivalent of `AUTH_TOKEN`. Validate `aud` (the URL form; accept the Graph app-ID GUID form defensively — no mirrored doc shows a delegated Graph token carrying it) and `exp`, and surface a clear error when either is wrong. Be explicit in the docs that this is a decode-only check on an unsigned token, so it catches the common mistakes (wrong audience, expired) and is not a security control; it does not check scopes either, so a token with the right `aud` and the wrong scopes fails later with 403.
+- **Escape hatch:** env `TEAMS_ACCESS_TOKEN`. This is a short-lived token used as-is, the equivalent of `AUTH_TOKEN`. Validate `aud` and `exp`. Accept both the Graph app-ID GUID form `00000003-0000-0000-c000-000000000000` (which is what the spike's real delegated tokens carried) and the URL form `https://graph.microsoft.com`, and surface a clear error when either is wrong. Be explicit in the docs that this is a decode-only check on an unsigned token, so it catches the common mistakes (wrong audience, expired) and is not a security control; it does not check scopes either, so a token with the right `aud` and the wrong scopes fails later with 403.
 - **Company recommendation:** register a dedicated Entra app (public client, the delegated scopes above, admin-consented) instead of relying on the Graph CLI Tools client ID. Tenants often block that client.
+  - The registration needs `http://localhost` as a **Mobile and desktop** redirect URI. MSAL Go listens on `http://localhost:<ephemeral port>`, and Entra ignores the port for localhost (`refs/entra/docs/identity-platform/reply-url.md`). Without it, the browser flow fails with AADSTS50011, as the spike saw with the Colorkrew app.
+  - "Allow public client flows" must be on for device code.
+  - The registration needs an owner, so changes don't need a ticket.
+  - `teams auth login` falls back to device code automatically on AADSTS50011, and prints the fix.
+- **Access-token lifetime:** with the `cp1` capability, the spike's tokens lived **24 h** with `RefreshOn` at about 12 h (CAE). Silent acquisition therefore rarely hits the network, which also bounds how often Key Vault is written.
 
 ## Command surface (noun-verb, `gh`-style)
 ```
@@ -118,7 +123,7 @@ teams chat show <chat>                             teams chat delete <chat>
 teams chat create --with a@x,b@x [--topic]         teams chat add-member <chat> <user…>
 teams chat mark-read|mark-unread <chat>
 teams unread [--chats --mentions]                  # inbox view: unread chats + unread @mentions
-teams search <query> [--from --to --in <channel|chat> --since --until --mentions-me --unread --has-attachment --limit --page]
+teams search <query> [--from --to --in <channel|chat> --since --until --mentions-me --has-attachment --limit --page]
 teams mentions [--since 24h]
 teams post <channel|chat> [text|-] [--md(default)|--text|--html] [--mention user…] [--file path…] [--subject] [--importance high|urgent] [--dry-run]
 teams reply <message> [text|-] …same flags         # channel: thread reply; chat: replyWithQuote
@@ -143,7 +148,7 @@ Notes that the docs force on this surface:
 - **Unread** is documented:
   - `GET /me/chats?$expand=lastMessagePreview&$orderby=lastMessagePreview/createdDateTime desc` returns `viewpoint.lastMessageReadDateTime` (delegated only, `chatviewpoint.md`). A chat is unread when its last message is newer than that timestamp.
   - `POST /chats/{id}/markChatReadForUser` and `markChatUnreadForUser` (both `Chat.ReadWrite`) back `mark-read` and `mark-unread`.
-  - For channels, the KQL term `IsRead:false` is documented for message search.
+  - The KQL term `IsRead` is documented for message search, but in the spike it returned **HTTP 500 every time** (any casing, alone or combined). `unread` therefore covers chats through `viewpoint`, and mentions through `IsMentioned:true` since the stored watermark. It does not cover unread channel posts, which have no working read-state API.
 - **`teams doctor`** checks config, token store and keychain reachability, granted scopes against the feature matrix, clock skew, and Graph reachability, and prints the fix for each failure. It makes no write calls.
 
 ### Smart references
@@ -158,8 +163,8 @@ Notes that the docs force on this surface:
 
   Parse tolerantly: the channel ID appears raw (`19:…@thread.tacv2`) in the docs but percent-encoded in Graph's own `webUrl`, parameter order is not stable, and unknown parameters must be ignored. Reject the non-message families (`/l/app`, `/l/entity`, `/l/task`, `/l/call`, `/l/meeting*`) with a usage error. A channel message link **without `groupId` is unresolvable** — every channel-message Graph route needs the team id and there is no channel→team lookup — so fail with exit 4 or require `--team`. The newer `teams.cloud.microsoft` host is not in the mirror: accept it defensively and cover it with a fuzz case.
 - a **name path**: `Engineering/General`, `Engineering/General/<msgId>`. The CLI matches names case-insensitively, falls back to fuzzy matching, and asks you to pick when a name is ambiguous on a TTY. It errors in non-interactive mode.
-- a **person**: `@alice` or `alice@colorkrew.com` means your 1:1 chat with that person. There is no documented person-to-chat lookup, so this is either a `GET /me/chats?$expand=members` scan (capped at 25 members, `$top` max 50) or a `POST /chats` one-on-one create, which the API documents as returning the existing chat ("Only one one-on-one chat can exist between two members", `chat-post.md`). Pick per mode: the scan for `read`, the create for `write` — in read-only mode the person form must fail with usage guidance rather than write. The scan's result is cached (person → chat id), so it runs once per person.
-  - **Resolving a name to a person** goes: alias → people cache → `GET /me/people?$search=<q>` → `GET /users?$filter=startswith(...)`. `/me/people` is "ordered by relevance … determined by the user's communication and collaboration patterns", and supports fuzzy `$search` (`user-list-people.md`, `People.Read`, no admin consent). It is the best tool for "@yuki" meaning *the* Yuki you work with, rather than the first of twelve in the directory.
+- a **person**: `@alice` or `alice@colorkrew.com` means your 1:1 chat with that person. There is no documented person-to-chat lookup, so this is either a `GET /me/chats?$expand=members` scan (documented cap of 25 members, though the spike saw 116; `$top` max 50) or a `POST /chats` one-on-one create, which the API documents as returning the existing chat ("Only one one-on-one chat can exist between two members", `chat-post.md`). Pick per mode: the scan for `read`, the create for `write` — in read-only mode the person form must fail with usage guidance rather than write. The scan's result is cached (person → chat id), so it runs once per person.
+  - **Resolving a name to a person** goes: alias → entity cache → **members of the user's chats and teams** → `GET /me/people?$search=<q>` (if `People.Read`) → `GET /users?$filter=startswith(...)` (if `User.ReadBasic.All`). Membership needs no extra scope (`Chat.ReadWrite` / `TeamMember.Read.All`), and it carries `userId` and usually `email` (the spike saw 37 of 37 and 35 of 37), so `@name` and `--mention` keep working even where the directory scopes are not granted. Membership scans are cached. `/me/people` is "ordered by relevance … determined by the user's communication and collaboration patterns", and supports fuzzy `$search` (`user-list-people.md`, `People.Read`, no admin consent). It is the best tool for "@yuki" meaning *the* Yuki you work with, rather than the first of twelve in the directory.
 - an **alias**: `teams alias set boss alice@colorkrew.com`, `teams alias set standup Engineering/Daily`. Aliases are explicit, durable and per profile, and they work in every command and in AI prompts.
 - a **raw ID**.
 - names are resolved through the per-profile **entity cache** (see Local data), with a TTL of about 1h for names and 7 days for person → user id and person → 1:1 chat id. `--refresh` bypasses it.
@@ -174,11 +179,12 @@ Notes that the docs force on this surface:
   - **sanitize before inserting `<at>`.** The MCP sanitizes markdown and *then* substitutes mentions ([markdown.ts](refs/teams-mcp/src/utils/markdown.ts) → [teams.ts](refs/teams-mcp/src/tools/teams.ts)). Any port that sanitizes the assembled body will have bluemonday strip the unknown `<at>` element and silently drop every mention. Golden-test this: build a body with mentions, run it through the whole format path, and assert the tags survive.
 - `mode=read-only`, the global `--read-only` flag, or env `TEAMS_READ_ONLY=1` blocks write commands before any network call.
 - `--since` and `--until` work differently per container, because the docs differ:
-  - **Chat messages** (`chat-list-messages.md`) support `$orderby` on `lastModifiedDateTime` (the default) or `createdDateTime`, descending only. They also support a `$filter` on the same property: `lastModifiedDateTime` takes `gt` and `lt`, `createdDateTime` takes only `lt`. The filter is **silently ignored** unless `$orderby` names the same property.
-    - `--since` sends `$orderby=lastModifiedDateTime desc&$filter=lastModifiedDateTime gt X`. That returns a superset, because an edited message has a newer modified time, so `createdDateTime` is checked again on the client.
-    - `--until` can use `createdDateTime lt`.
-    - fakegraph must reproduce the "ignored without a matching `$orderby`" rule.
-  - **Channel messages and replies** support only `$top` (max 50) and `$expand` (channels), so the filtering is client-side. The client pages with `@odata.nextLink` until the window is covered or `--limit` is hit. Channel roots are sorted by the last modification of the **whole reply chain** (`channel-list-messages.md`), so an old root can appear near the top when its thread has new replies. In principle the walk can stop at the first chain whose last activity is older than the window, but no documented property exposes a chain's last-activity time (the root's own `lastModifiedDateTime` may not reflect replies). Confirm this in the spike; until then, stop after a full page of out-of-window roots. `--help` says so, so the cost is visible.
+  - **Chat messages** (`chat-list-messages.md`) support `$orderby` on `lastModifiedDateTime` (the default) or `createdDateTime`, descending only. They also support a `$filter` on the same property: `lastModifiedDateTime` takes `gt` and `lt`, `createdDateTime` takes only `lt`. The docs say the filter is **silently ignored** unless `$orderby` names the same property. The spike confirmed that for `createdDateTime lt`, but a `lastModifiedDateTime gt` filter worked even without `$orderby`. Always send the matching `$orderby`.
+    - `--since` sends `$orderby=lastModifiedDateTime desc&$filter=lastModifiedDateTime gt X`. That returns a superset, because an edited message (or one with a new reaction) has a newer modified time, so `createdDateTime` is checked again on the client.
+    - `--until` uses `$orderby=createdDateTime desc&$filter=createdDateTime lt X`.
+    - The default order is **neither** created- nor modified-sorted (spike, 150 messages), so the client always sorts before rendering.
+    - fakegraph reproduces the observed behavior: `createdDateTime lt` without `$orderby` is ignored, `createdDateTime gt` and ascending order return 400.
+  - **Channel messages and replies** support only `$top` (max 50) and `$expand` (channels), so the filtering is client-side. The client pages with `@odata.nextLink` until the window is covered or `--limit` is hit. Channel roots are sorted by the last modification of the **whole reply chain** (`channel-list-messages.md`), so an old root can appear near the top when its thread has new replies. The spike confirmed that the order is descending by `max(root.lastModifiedDateTime, newest reply createdDateTime)`, and that the root's own `lastModifiedDateTime` misses reply activity (8 of 20 roots). So `--since` fetches with `$expand=replies`, computes each chain's activity, and **stops at the first chain older than the window**. `$filter` on channel messages returns **400** ("not supported"), not a silent ignore. `--help` says so, so the cost is visible.
 - Non-interactive mode (`--no-input`, CI auto-detect) never prompts and fails fast with exit codes: 0 ok, 1 error, 2 usage, 3 auth required, 4 not found, 5 throttled.
 
 ## Architecture (new repo)
@@ -217,19 +223,22 @@ Port these:
 - **Content type:** magic-byte sniffing from [content-type.ts](refs/teams-mcp/src/utils/content-type.ts).
 - **Chat quirks:**
   - `create_chat` needs `roles:["owner"]` (documented: external users must be `owner`);
-  - soft delete goes through `/users/{me}/chats/…`.
+  - soft delete goes through `/users/{me}/chats/…` (the spike got 405 on the `/chats/…` form).
 - **Error hints:** the friendly messages for AADSTS50020 and AADSTS65001 — but point them at our own config: 50020 is usually a wrong `tenant`/`client_id` or a personal account, and 65001 is "user **or admin** consent missing", not automatically an admin problem.
 
 Fix these gaps found in the MCP:
-- Follow pagination everywhere: teams, chats, channels, channel messages (`@odata.nextLink` is documented for those). Member and reply listings carry no `nextLink` in the docs, so treat their paging as best-effort and size the requests with `$top` instead. `GET …/replies` caps `$top` at **50** (`chatmessage-list-replies.md`). The 200 and 1,000 figures apply only to replies that come **inlined** through `$expand=replies` on the channel list, which pages them with `replies@odata.nextLink`.
+- Follow pagination everywhere: teams, chats, channels, channel messages (`@odata.nextLink` is documented for those). Member and reply listings carry no `nextLink` in the docs, but the spike saw team members page with `@odata.nextLink` at `$top=5`, so the shared paging iterator is used for them too (it is harmless when no link comes back). `GET …/replies` caps `$top` at **50** (`chatmessage-list-replies.md`). The 200 and 1,000 figures apply only to replies that come **inlined** through `$expand=replies` on the channel list, which pages them with `replies@odata.nextLink`.
 - Escape `'` in OData `$filter` user search by **doubling** it — the docs require it and the MCP never does it.
-- Send inline images through `hostedContents[]` in the message POST with `<img src="../hostedContents/1/$value">`. **Verified:** the MCP's standalone `POST …/messages/hostedContents` has no v1.0 counterpart (the api-reference has no create page for it), so it is broken — and the `@microsoft.graph.temporaryId` in `hostedContents[]` must equal the id used in the body reference. The OpenAPI description *does* declare that operation, so the Layer 6 route list must come from the api-reference, not from spec operations.
+- Send inline images through `hostedContents[]` in the message POST with `<img src="../hostedContents/1/$value">`. **Verified:** the MCP's standalone `POST …/messages/hostedContents` has no v1.0 counterpart (the api-reference has no create page for it), so it is broken (the spike got **405**) — and the `@microsoft.graph.temporaryId` in `hostedContents[]` must equal the id used in the body reference. The OpenAPI description *does* declare that operation, so the Layer 6 route list must come from the api-reference, not from spec operations.
 - Make `mentions --since` exact by filtering on `createdDateTime` on the client.
-  - The KQL scope terms **are** documented for Teams search (`concepts/search-concept-chat-messages.md`, "Supported scope terms"): `from`, `to` (partial, 1:1 only), `sent`, `IsMentioned`, `IsRead`, `hasAttachment`, and `mentions:<userId without dashes>`.
-  - The examples use day literals (`sent > 2022-07-14`), so day granularity is likely; confirm it in the spike.
-  - The same page lists the search limits: no sorting for messages; `total` counts the current page only, not all matches; you see only messages you were included in. Build `--limit`/`--page` on that.
+  - The KQL scope terms **are** documented for Teams search (`concepts/search-concept-chat-messages.md`, "Supported scope terms"): `from`, `to` (partial, 1:1 only), `sent`, `IsMentioned`, `IsRead`, `hasAttachment`, and `mentions:<userId without dashes>`. In the spike, `IsMentioned`, `hasAttachment` and `mentions:` worked, and **`IsRead` returned 500**, so it is not used.
+  - **`sent` honors a time of day.** `sent>=2026-10-02T20:00:00Z` returned only later messages, so the MCP's day-granularity premise is wrong. Send full UTC timestamps; a bare date has an unconfirmed timezone boundary. The client-side `createdDateTime` check stays as a cheap safety net.
+  - Search limits:
+    - **Documented and observed:** no sorting for messages; you see only messages you were included in.
+    - **Observed, against the docs:** `size` up to **50** works for `chatMessage` (no 25 cap), and `total` is the **total match count** (for example, 1,946 at `size=5`), so "showing 25 of N" is possible.
+    - **Hits carry no body** (the resource has `id`, `chatId`/`channelIdentity`, `from`, `createdDateTime`, `subject` and `webLink`). Render the hit's `summary`, or batch-fetch the full messages when `--json` asks for bodies.
   - `chat read` can filter on the server (see the Output section); `channel read` and `thread read` cannot.
-- Support `subject` on channel posts: it is a documented `chatMessage` property and is mandatory in neither container — verify what Graph actually honors for channels in the spike instead of assuming chats ignore it.
+- Support `subject` on channel posts **and chats**. The spike showed it stored and returned in both, so `--subject` is valid for every container.
 - Resolve mentions in `$batch` calls of at most **20** requests instead of one call per mention, and retry the sub-requests ourselves (Graph does not).
 - Add retries to raw upload chunks.
 - Encrypt the token cache: envelope encryption with the key in the OS keychain on all three OSes, without cgo; a 0600 file only where no keychain is reachable.
@@ -386,16 +395,37 @@ Phase 0 is complete: the mirror, `refs/INDEX.md` and `refs/MANIFEST.md` are in t
   - `refs/` stays a reasonable size (target < 500 MB);
   - spot-check queries return hits: `rg -l "setReaction" refs/graph`, `rg "AADSTS65001" refs/entra`, `rg "hostedContents" refs/graph/api-reference`, `rg "l/message" refs/msteams`, plus the KQL scope terms, the People API and GoReleaser casks.
 
-### Phase 1: Spike (1–2 days)
-- MSAL Go with PKCE and device code against the Colorkrew tenant, using both the Graph CLI Tools ID and our own app;
-- prove the envelope-encrypted token store (go-keyring data key + AES-GCM file) on macOS, Windows and a desktop Linux, and the plaintext fallback on headless Linux; measure a real MSAL cache size (it sets the Key Vault size guard too);
-- **consent reality check:** which of the three scope tiers the Colorkrew tenant grants without an admin, and whether user consent is allowed at all; get admin consent for our own app registration;
-- chat `$orderby`+`$filter` on `lastModifiedDateTime` (the `--since` fast path), and whether any field tells a channel root's whole-chain last activity;
-- `replyWithQuote` on a chat message, and `viewpoint.lastMessageReadDateTime` / `markChatReadForUser` for the unread view;
-- `/me/people?$search=` quality for Japanese and romanized names;
-- a Key Vault cache round-trip, including write-back on refresh, with an explicit context deadline;
-- an inline hostedContents image post (including the `temporaryId` pairing rule) and a check of what Graph actually does with `subject`;
-- search API behavior for the service account: the real permissions, `from`/`size` paging (is `size` capped at 25 for `chatMessage` like for mail?), `sent` granularity, and the documented `IsRead` / `IsMentioned` / `mentions:` terms.
+### Phase 1: Spike (done 2026-10-04, open items listed)
+The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwaway code in `spike/`, and are folded into this plan.
+- **Proven:**
+  - device code with our own app;
+  - the envelope token store on macOS and Linux (with the headless fallback), static and cgo-free;
+  - write-back on refresh only (never on a cache hit); the MSAL cache is 8.2 KB;
+  - the `scp` claim as the feature matrix;
+  - chat `$filter` / `$orderby`, and the channel chain ordering;
+  - search paging, `total`, and `sent` with a time of day;
+  - inline `hostedContents` together with `subject` (both containers);
+  - `replyWithQuote`, mark read/unread, and the `/users/{me}/chats` soft-delete path.
+- **Disproved or corrected:**
+  - `aud` comes in GUID form;
+  - `ChannelMessage.Edit` does not allow edit or delete;
+  - users in this tenant cannot self-consent to anything;
+  - `IsRead` returns 500;
+  - there is no 25 cap on search `size`;
+  - team member lists do page;
+  - search hits carry no body.
+- **Open:**
+  - the Key Vault round-trip (skipped by decision);
+  - the Windows envelope store;
+  - PKCE, which waits on an admin to register the redirect URI;
+  - a Graph CLI Tools sign-in by a user who has no prior grant;
+  - `viewpoint` after mark-read on a normal chat;
+  - the timezone of a bare-date `sent` boundary;
+  - testscript coverage merging (in Phase 2).
+- **Admin ticket** (needed before `full` works at Colorkrew):
+  - the `http://localhost` redirect;
+  - consent for `User.ReadBasic.All`, `ChannelMessage.ReadWrite` and (optionally) `Files.Read.All`, `Files.ReadWrite.All` and `People.Read`;
+  - an owner for the app registration.
 
 ### Phase 2: Foundation
 - repo scaffold, cobra, config and profiles;
@@ -449,7 +479,7 @@ We can't test against the real Graph API, so the plan is a **high-fidelity fake 
   - `@odata.nextLink` paging with `$top` (and the documented caps: 50 for message and chat lists, 25 members with `$expand=members`, 50 for `/replies`, 200/1000 for replies inlined via `$expand=replies`), plus the `$filter` and `$orderby` subset we use — including the chat-messages rule that a `$filter` without a matching `$orderby` is silently ignored;
   - chat `viewpoint` (`lastMessageReadDateTime`) with `markChatReadForUser`/`markChatUnreadForUser`, `replyWithQuote` (max 10 quoted), `/me/people?$search=` with a relevance order, and an admin-consent model: tokens carry scopes, and routes return 403 when theirs is missing, so the scope-tier feature matrix is testable;
   - `$batch` with the documented maximum of 20 requests per call, and the rule that sub-request failures arrive inside a 200 response;
-  - rejecting the query parameters Graph refuses on message endpoints, so a client that tries server-side `$filter` on messages fails in tests rather than in production;
+  - rejecting the query parameters Graph refuses, with the status codes observed in the spike: 400 for `$top` > 50 (messages, replies, chats) and for `$filter` on channel messages; 405 for `/chats/…/softDelete` and for a standalone hostedContents POST;
   - softDelete, set/unset reactions, upload sessions with `Content-Range` validation;
   - `/search/query` over stored messages, paging by `from`/`size`, with a KQL subset: `from:`, `to:`, `sent>`/`sent>=`, `IsMentioned:`, `IsRead:`, `mentions:`, `hasAttachment:` and free text, no sorting, and `total` = count on the page — and `Prefer: include-unknown-enum-members` honored so `systemEventMessage` can be exercised.
 - **Fault injection:** per route or per call, it can return 429 with `Retry-After`, 503, 401 with an expired token (once with a CAE claims challenge), 403 for missing scope, or malformed JSON.

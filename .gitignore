@@ -17,3 +17,6 @@ coverage.out
 # Editor / OS noise
 .DS_Store
 .idea/
+
+# Spike artifacts
+/spike/

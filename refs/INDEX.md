@@ -421,6 +421,20 @@ with an incompatible API and sorts first in a grep. Also `kin-openapi`'s own dep
 
 Pages marked `{{< g_featpro >}}` / "only available in GoReleaser Pro" are out of scope: the plan uses OSS.
 
+## Observed behavior vs. the docs (Phase 1 spike)
+
+Live results that differ from, or go beyond, the mirrored docs are recorded in
+`docs/spike/phase1.md`. Treat that file as the tie-breaker when a doc and the tenant disagree.
+In short:
+- delegated Graph tokens carry the GUID `aud`;
+- `IsRead` search returns 500;
+- `size` up to 50 works for `chatMessage`, and `total` is the full match count;
+- `sent` honors a time of day;
+- chat `$filter lastModifiedDateTime gt` works without `$orderby`;
+- team member lists page;
+- `ChannelMessage.Edit` cannot edit or delete;
+- `filesFolder` also accepts `ChannelSettings.Read.All`.
+
 ## Known gaps
 
 Things a later phase will need that this mirror does not contain. Add the source or sparse path to
@@ -434,9 +448,8 @@ Things a later phase will need that this mirror does not contain. Add the source
   is unverified — add it as a fuzz case.
 - **A create-hosted-content endpoint.** The v1.0 api-reference has none (section 1); only the message POST
   creates hosted content.
-- **`sent` granularity** in Teams KQL — see section 6 (the property names themselves are documented).
-- **Search page size for `chatMessage`.** `search-api-overview.md` caps `size` at 25 for "message and
-  event"; whether that covers `chatMessage` is not stated.
+- **Bare-date `sent` timezone** in Teams KQL. A time of day is honored (spike), but the boundary of a
+  bare date is unconfirmed.
 - **A chat-wide "last activity" field for channel roots** (to stop a `--since` walk early) — not documented.
 
 ## Keeping this file honest
