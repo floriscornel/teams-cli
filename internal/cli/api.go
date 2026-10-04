@@ -89,7 +89,7 @@ func (a *App) newAPICmd() *cobra.Command {
 				}
 				return a.printDryRun(dryRunDocument{
 					Method: method, Path: path, Body: preview,
-					Paths: headerLines(header),
+					Headers: headerLines(header),
 				})
 			}
 

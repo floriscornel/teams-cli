@@ -39,7 +39,6 @@ type messageFlags struct {
 	subject    string
 	importance string
 	dryRun     bool
-	yes        bool
 }
 
 // bind registers the shared flags.
@@ -162,14 +161,6 @@ type writeContainer struct {
 	// Ref is the resolved reference, for labels.
 	Ref    ref.Ref
 	IsChat bool
-}
-
-// Label names the container for a confirmation line.
-func (c writeContainer) Label() string {
-	if c.IsChat {
-		return firstNonEmptyString(c.Ref.ChatTopic, c.Ref.UserName, c.Ref.ChatID)
-	}
-	return firstNonEmptyString(c.Ref.ChannelName, c.Ref.ChannelID)
 }
 
 // UploadTarget is where a file attachment for this container goes.
@@ -349,9 +340,6 @@ func (a *App) resolveMessageTarget(ctx context.Context, resolver *ref.Resolver, 
 type writePayload struct {
 	Post    graph.MessagePost
 	Uploads []plannedUpload
-	// PendingFiles is set when --dry-run skipped an upload, so the printed body
-	// has no attachment reference for it.
-	PendingFiles []string
 }
 
 // plannedUpload describes an upload --dry-run did not perform.
@@ -386,7 +374,7 @@ func (a *App) buildPayload(ctx context.Context, flags messageFlags, mode, text s
 		content, entries, err := format.ApplyMentions(body.Content, targets)
 		if err != nil {
 			var unmatched *format.UnmatchedMentionError
-			if errorsAs(err, &unmatched) {
+			if errors.As(err, &unmatched) {
 				return writePayload{}, output.WithHint(output.Usagef("%s", err.Error()),
 					"write the mention into the text the way you want it shown, e.g. @alice or @\"Alice Example\"")
 			}
@@ -548,7 +536,6 @@ func (a *App) applyFiles(ctx context.Context, payload *writePayload, body *graph
 		payload.Uploads = append(payload.Uploads, plan)
 
 		if !upload {
-			payload.PendingFiles = append(payload.PendingFiles, name)
 			continue
 		}
 		if inline {
@@ -615,6 +602,8 @@ type dryRunDocument struct {
 	// Paths lists the extra requests a command makes when one is not enough
 	// (chat add-member adds one member per call).
 	Paths []string `json:"paths,omitempty"`
+	// Headers lists the extra request headers a raw `teams api` call sets.
+	Headers []string `json:"headers,omitempty"`
 	// Uploads lists the files that a real run would put in a drive first; their
 	// ids and URLs are what an attachment reference needs, so the printed body
 	// has none.
@@ -765,12 +754,6 @@ func messageTargetPath(target graph.MessageTarget) string {
 	default:
 		return "/teams/" + target.TeamID + "/channels/" + target.ChannelID + "/messages/" + target.MessageID
 	}
-}
-
-// errorsAs is errors.As with the target already typed, so callers do not have
-// to declare a variable for the one error type they care about.
-func errorsAs(err error, target **format.UnmatchedMentionError) bool {
-	return errors.As(err, target)
 }
 
 // containsFold reports whether values contains want, case-insensitively.

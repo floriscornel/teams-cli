@@ -143,17 +143,15 @@ func (a *App) newReplyCmd() *cobra.Command {
 			}
 			if flags.dryRun {
 				path := messageTargetPath(target)
-				method := "POST"
+				var body any = payload.Post
 				if target.IsChat() {
+					// The documented quote-reply body (chatmessage-replywithquote.md:52-55).
 					path = "/chats/" + target.ChatID + "/messages/replyWithQuote"
+					body = map[string]any{"replyMessage": payload.Post, "messageIds": []string{target.MessageID}}
 				} else {
 					path += "/replies"
 				}
-				var body any = payload.Post
-				if target.IsChat() {
-					body = map[string]any{"replyMessage": payload.Post, "messageIds": []string{target.MessageID}}
-				}
-				return a.printDryRun(dryRunDocument{Method: method, Path: path, Body: body, Uploads: payload.Uploads})
+				return a.printDryRun(dryRunDocument{Method: "POST", Path: path, Body: body, Uploads: payload.Uploads})
 			}
 			client, err := a.Graph(ctx)
 			if err != nil {
