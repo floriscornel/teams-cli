@@ -70,11 +70,13 @@
 package fakegraph
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -228,9 +230,32 @@ func NewServer(opts Options) *Server {
 	}
 	s.faultCalls = make([]int, len(opts.Faults))
 	s.routes = buildRoutes()
-	s.ts = httptest.NewServer(s)
-	s.origin = s.ts.URL
-	s.url = s.ts.URL + opts.BasePath
+	// Bind the listener before the server can serve anything.
+	//
+	// httptest.NewServer starts accepting as soon as it returns, so assigning the
+	// URL fields afterwards left a window in which a handler could read them
+	// while they were being written: -race caught exactly that in the testscript
+	// suite, where every script builds its own server and a keep-alive
+	// connection inherited from a just-closed server on the same port can arrive
+	// mid-construction. A request in that window would build URLs without the
+	// version prefix (or none at all). Binding first means the address is known,
+	// so every field is set before the server serves its first request.
+	// ListenConfig with a context, as the linter requires; the bind has no
+	// deadline of its own.
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Sprintf("fakegraph: listen: %v", err))
+	}
+	s.origin = "http://" + ln.Addr().String()
+	s.url = s.origin + opts.BasePath
+	ts := httptest.NewUnstartedServer(s)
+	// NewUnstartedServer opens its own listener; the one bound above replaces it,
+	// so the advertised URL is the address that actually serves.
+	_ = ts.Listener.Close()
+	ts.Listener = ln
+	s.ts = ts
+	ts.Start()
 	return s
 }
 
