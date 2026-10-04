@@ -34,7 +34,7 @@ exec teams post Engineering/General 'later' --file notes.txt --dry-run
 stdout '"uploads"'
 stdout '"kind": "attachment"'
 stdout '"contentType": "text/plain"'
-stdout '"size": 15'
+stdout '"name": "notes.txt"'
 exec teams post Engineering/General 'later' --file chart.svg --dry-run
 stdout '"kind": "inline image"'
 stdout '"contentType": "image/svg'

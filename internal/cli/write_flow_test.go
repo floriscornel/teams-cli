@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,48 @@ func TestPostToAChannelWithAMention(t *testing.T) {
 	user := sent.Mentions[0].Mentioned.User
 	if user == nil || user.ID != flowBob || user.DisplayName != "Bob Builder" || user.UserIdentityType != "aadUser" {
 		t.Errorf("mention user = %+v, want the documented shape", user)
+	}
+}
+
+func TestPostDryRunPlansTheUpload(t *testing.T) {
+	// The upload a real run would perform, with the numbers an attachment needs.
+	// This lives here rather than in the testscript script: the script's fixture
+	// bytes depend on how the checkout translates line endings, and an exact byte
+	// count would only hold on the machines that checked it out with LF.
+	h, srv := newWriteHarness(t, writeFlowModel())
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notes.txt")
+	content := "# deploy notes\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := h.mustRun("post", "Engineering/General", "later", "--file", path, "--dry-run")
+	var doc struct {
+		Uploads []struct {
+			File        string `json:"file"`
+			Name        string `json:"name"`
+			Size        int64  `json:"size"`
+			ContentType string `json:"contentType"`
+			Kind        string `json:"kind"`
+		} `json:"uploads"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("the dry run is not JSON: %v (%q)", err, out)
+	}
+	if len(doc.Uploads) != 1 {
+		t.Fatalf("uploads = %+v, want one", doc.Uploads)
+	}
+	upload := doc.Uploads[0]
+	if upload.Name != "notes.txt" || upload.Kind != "attachment" || upload.ContentType != "text/plain" {
+		t.Errorf("upload = %+v", upload)
+	}
+	if upload.Size != int64(len(content)) {
+		t.Errorf("size = %d, want %d", upload.Size, len(content))
+	}
+	// A dry run really uploads nothing.
+	if calls := srv.RequestsFor(http.MethodPut, ""); len(calls) != 0 {
+		t.Errorf("the dry run sent %d PUTs, want none", len(calls))
 	}
 }
 
@@ -214,6 +258,12 @@ func TestReadBodyTextSources(t *testing.T) {
 }
 
 func TestEditorTextRunsTheConfiguredEditor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The stand-in editor is a POSIX shell script, and exec refuses a .sh on
+		// Windows; the code under test (run $EDITOR on a temp file, read it back)
+		// is the same everywhere.
+		t.Skip("the stand-in editor is a shell script")
+	}
 	dir := t.TempDir()
 	editor := filepath.Join(dir, "editor.sh")
 	script := "#!/bin/sh\nprintf 'from the editor\\n' > \"$1\"\n"

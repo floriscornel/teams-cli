@@ -1,0 +1,6 @@
+# Testscript fixtures are read as bytes: a script's embedded files ("-- notes.txt --")
+# are compared by size and content in a few places, and a Windows checkout that
+# converted LF to CRLF changed those bytes (a 15-byte file arrived as 16). Marking
+# them verbatim keeps a fixture identical on every platform, which is also what a
+# golden file would need.
+*.txtar -text

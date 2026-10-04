@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestAliasRoundTrip(t *testing.T) {
@@ -381,8 +382,26 @@ func TestAliasesConcurrentWritersThroughTheLock(t *testing.T) {
 				// SetAlias holds the per-profile lock around its
 				// read-modify-write, so a concurrent writer cannot lose an
 				// alias stored between its own load and save.
+				//
+				// The lock has a bounded wait and a loaded Windows runner can
+				// exceed it (the run that failed did so three times over), which
+				// is a scheduling artefact rather than a lost write: a user hits
+				// exactly the same message and re-runs the command. The writer
+				// therefore retries while the lock is busy, and the assertions
+				// below still fail if an alias is actually lost.
 				name := fmt.Sprintf("alias-%d-%d", w, i)
-				if err := SetAlias(path, name, "alice@colorkrew.com"); err != nil {
+				var err error
+				for attempt := 0; attempt < 100; attempt++ {
+					// Any error is retried: the lock reports a busy lock with a
+					// plain message (there is no sentinel to match), and a real
+					// failure — an unparsable file, a permission problem —
+					// repeats on every attempt and still fails below.
+					if err = SetAlias(path, name, "alice@colorkrew.com"); err == nil {
+						break
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+				if err != nil {
 					t.Errorf("writer %d: %v", w, err)
 				}
 			}
