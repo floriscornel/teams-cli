@@ -225,22 +225,22 @@ make vuln release-check
   *production* code importing test tooling, and the packages inside
   `internal/testing` legitimately import each other.
 
-## Gaps this change could not close
+## Follow-ups
 
-These are outside the file scope of the CI/CD change and are noted here so they
-are not forgotten:
+Both wrappers the workflows call now exist, so `refs-check` and `make smoke` run:
 
-- **`scripts/gen-contract.sh` does not exist yet.** `refs-check` calls it to
-  regenerate the trimmed OpenAPI subset and the api-reference route list. The
-  generator behind it (`internal/testing/contract/cmd/gencontract`, which writes
-  `internal/testing/testdata/openapi/`) is already in the tree and its doc
-  comment names `scripts/gen-contract.sh` as the entry point, so the job will
-  work as soon as the wrapper lands. The `refs-changed` path filter and the
-  failure message already reference both.
-- **`scripts/smoke.sh` does not exist yet**, so `make smoke` cannot run. The
-  local half of the smoke job (the `-tags dev` build plus a testscript subset
-  against the built binary, per PLAN.md "Release smoke") belongs there. CI
-  currently covers the install/version/exit-code/flag-absence part only.
+- **`scripts/gen-contract.sh`** regenerates the trimmed OpenAPI subset and the
+  api-reference route list on top of `internal/testing/contract/cmd/gencontract`;
+  `--verify` fails when a re-run would change the committed inputs.
+- **`scripts/smoke.sh`** is the local half of the smoke job: it runs a built
+  binary in an isolated config/state/cache directory, checks `version`, the help
+  surface, exit code 3 from `auth status`, exit code 2 for a usage error, the
+  config round trip, `cache info|clear` (which must keep token material) and the
+  absence of the test-only endpoint markers that the CI job also greps for.
+  Keep the marker list in `scripts/smoke.sh` and in `ci.yml` in step.
+
+Open items that still need a human:
+
 - **No `make release` target.** `release.yml` therefore invokes
   `goreleaser release --clean` directly. If a target is added, the workflow
   should call it.
@@ -248,12 +248,7 @@ are not forgotten:
   suite through `make test` because the Makefile has no narrower hook; a
   `make contract` target would make that job cheaper and its failures more
   precise.
-- **`make vuln` is unpinned**: it runs
-  `go run golang.org/x/vuln/cmd/govulncheck@latest`, so the scanner version can
-  change between runs. Pinning a version in the Makefile would match the rest of
-  the supply-chain story.
-- **No `LICENSE` file.** `.goreleaser.yaml` therefore sets no `license:` for the
-  deb/rpm/apk packages (GoReleaser's `metadata.license` is Pro-only, and the
-  packages build fine without it). Add both in the same PR.
-- **Branch protection** on `main` requiring this workflow is a repository
-  setting, not a file.
+- **`make vuln` is unpinned** (`go run golang.org/x/vuln/cmd/govulncheck@latest`),
+  so the scanner version can drift between runs.
+- **The first release needs a maintainer**: `git tag -s v0.1.0-rc.1 && git push
+  --tags` triggers `release.yml`. Nothing has been pushed from this work.
