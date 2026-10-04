@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -64,7 +65,8 @@ func TestVersionCheckReportsANewerRelease(t *testing.T) {
 	if !strings.Contains(out, "go install github.com/floriscornel/teams-cli/cmd/teams@v1.0.0") {
 		t.Errorf("stdout = %q, want the upgrade command", out)
 	}
-	// The answer is cached, 0600, in the profile's state dir.
+	// The answer is cached in the profile's state dir; 0600 on the platforms
+	// that have POSIX permission bits (see the store tests).
 	paths, err := h.app.Paths()
 	if err != nil {
 		t.Fatalf("Paths: %v", err)
@@ -73,8 +75,10 @@ func TestVersionCheckReportsANewerRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the check did not write its cache: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("cache mode = %o, want 600", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("cache mode = %o, want 600", perm)
+		}
 	}
 }
 

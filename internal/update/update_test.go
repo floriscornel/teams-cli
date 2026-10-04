@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -79,13 +80,17 @@ func TestCheckReportsANewerRelease(t *testing.T) {
 		t.Errorf("cached result = %+v", cached)
 	}
 
-	// The cache file is 0600, like every other state file.
-	info, err := os.Stat(cache)
-	if err != nil {
-		t.Fatalf("stat the cache: %v", err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("cache mode = %o, want 600", perm)
+	// The cache file is 0600, like every other state file. Windows has no POSIX
+	// permission bits (os.Stat there reports 0666), so the check is skipped
+	// there, as it is for the other state files.
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(cache)
+		if err != nil {
+			t.Fatalf("stat the cache: %v", err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("cache mode = %o, want 600", perm)
+		}
 	}
 
 	// A day later the cached answer is stale and the check runs again.
