@@ -51,7 +51,7 @@ Usage:
   scripts/fetch-refs.sh --update         move every source to its branch tip (prints a SHA changelog)
   scripts/fetch-refs.sh --source NAME    restrict to one source (repeatable); NAME comes from --list
   scripts/fetch-refs.sh --list           list sources, URLs and sparse paths
-  scripts/fetch-refs.sh --verify         re-run the Phase 0 spot checks against refs/
+  scripts/fetch-refs.sh --verify         spot checks: doc hits, refs/INDEX.md paths, size budget
   scripts/fetch-refs.sh --clean          delete source checkouts (keeps INDEX.md and MANIFEST.md)
   scripts/fetch-refs.sh --skip-go-libs   skip "go mod download" and refs/GO_LIBS.md
 
@@ -88,7 +88,7 @@ selected() {
 # Each line: <name>|<git url>|<sparse patterns separated by ; , empty means full checkout>
 sources() {
   cat <<'SPEC'
-graph|https://github.com/microsoftgraph/microsoft-graph-docs-contrib|api-reference/v1.0/api/channel*;api-reference/v1.0/api/chat*;api-reference/v1.0/api/chatmessage*;api-reference/v1.0/api/team*;api-reference/v1.0/api/user*;api-reference/v1.0/api/drive*;api-reference/v1.0/api/search*;api-reference/v1.0/api/teamwork*;api-reference/v1.0/resources/channel*;api-reference/v1.0/resources/chat*;api-reference/v1.0/resources/team*;api-reference/v1.0/resources/user*;api-reference/v1.0/resources/drive*;api-reference/v1.0/resources/search*;api-reference/v1.0/resources/teamwork*;concepts/teams*;concepts/search-concept-messages*;concepts/throttling*;concepts/paging*;concepts/json-batching*;concepts/permissions-reference*;concepts/query-parameters*;concepts/delta-query*;api-reference/v1.0/includes/permissions/*;api-reference/v1.0/resources/itembody*;api-reference/v1.0/resources/identityset*;api-reference/v1.0/resources/conversationmember*;api-reference/v1.0/resources/aaduserconversationmember*
+graph|https://github.com/microsoftgraph/microsoft-graph-docs-contrib|api-reference/v1.0/api/channel*;api-reference/v1.0/api/chat*;api-reference/v1.0/api/chatmessage*;api-reference/v1.0/api/team*;api-reference/v1.0/api/user*;api-reference/v1.0/api/drive*;api-reference/v1.0/api/search*;api-reference/v1.0/api/teamwork*;api-reference/v1.0/resources/channel*;api-reference/v1.0/resources/chat*;api-reference/v1.0/resources/team*;api-reference/v1.0/resources/user*;api-reference/v1.0/resources/drive*;api-reference/v1.0/resources/search*;api-reference/v1.0/resources/teamwork*;concepts/teams*;concepts/search-concept-messages*;concepts/search-concept-chat-messages*;concepts/throttling*;concepts/paging*;concepts/json-batching*;concepts/permissions-reference*;concepts/query-parameters*;concepts/delta-query*;/includes/throttling-teams.md;api-reference/v1.0/includes/permissions/*;api-reference/v1.0/resources/itembody*;api-reference/v1.0/resources/identityset*;api-reference/v1.0/resources/conversationmember*;api-reference/v1.0/resources/aaduserconversationmember*
 openapi|https://github.com/microsoftgraph/msgraph-metadata|/openapi/v1.0/openapi.yaml
 entra|https://github.com/MicrosoftDocs/entra-docs|docs/identity-platform/*.md;docs/identity-platform/**/*.md
 msteams|https://github.com/MicrosoftDocs/msteams-docs|msteams-platform/concepts/build-and-test/deep-link*;/msteams-platform/bots/how-to/format-your-bot-messages.md;msteams-platform/bots/how-to/conversations/*.md;/msteams-platform/includes/bots/user-mention.md;msteams-platform/task-modules-and-cards/cards/cards-format*;msteams-platform/graph-api/**/*.md
@@ -97,7 +97,7 @@ msal-go|https://github.com/AzureAD/microsoft-authentication-library-for-go|
 msal-ext|https://github.com/AzureAD/microsoft-authentication-extensions-for-go|
 azure-sdk|https://github.com/Azure/azure-sdk-for-go|sdk/azcore/**;sdk/azidentity/**;sdk/security/keyvault/azsecrets/**
 anthropic|https://github.com/anthropics/anthropic-sdk-go|
-teams-mcp|https://github.com/floriscornel/teams-mcp|src/**;/package.json
+teams-mcp|https://github.com/floriscornel/teams-mcp|src/**;/package.json;/vitest.config.ts;/tsconfig.json;/.github/workflows/*
 SPEC
 }
 
@@ -182,9 +182,9 @@ update_source() {
 }
 
 manifest_sha() {
-  local name="$1" blank n u s mode size
+  local name="$1" blank n u s mode
   [ -f "$MANIFEST" ] || return 0
-  while IFS='|' read -r blank n u s mode size; do
+  while IFS='|' read -r blank n u s mode; do
     if [ "$(trim "$n")" = "$name" ]; then
       printf '%s' "$(trim "$s")" | tr -cd '0-9a-f'
       return 0
@@ -203,7 +203,9 @@ show_list() {
     if [ -z "$pats" ]; then
       log "  (full checkout)"
     else
-      printf '%s' "$pats" | tr ';' '\n' | while IFS= read -r p; do
+      # "|| [ -n "$p"" matters: tr leaves no trailing newline, so a plain
+      # read would silently drop the last pattern of every source.
+      printf '%s' "$pats" | tr ';' '\n' | while IFS= read -r p || [ -n "$p" ]; do
         if [ -n "$p" ]; then log "  $p"; fi
       done
     fi
@@ -249,6 +251,28 @@ verify() {
   vcheck "Graph OpenAPI spec (chatMessage)" "chatMessage" "$REFS/openapi"
   vcheck "KQL syntax reference (sent)" "sent" "$REFS/kql"
   vcheck "teams-mcp reference (processMentions)" "processMentions" "$REFS/teams-mcp"
+  vcheck "Graph chatMessage POST (hostedContents)" "temporaryId" "$REFS/graph/api-reference/v1.0/api/chatmessage-post.md"
+  vfile "$REFS/graph/includes/throttling-teams.md" "Teams throttling include (referenced by throttling-limits.md) exists"
+  vfile "$REFS/graph/concepts/search-concept-chat-messages.md" "Teams message-search semantics exist"
+  vfile "$REFS/teams-mcp/vitest.config.ts" "teams-mcp coverage thresholds exist"
+
+  # Regression guard: a path cited in the curated index must exist, so the index
+  # cannot rot away from the mirror it describes.
+  local idx_missing="" p
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in
+      *'*'*) continue ;;              # a glob: nothing to assert
+      refs/GO_LIBS.md) continue ;;    # generated, may be absent with --skip-go-libs
+    esac
+    if [ ! -e "$p" ] && [ ! -d "${p%/}" ]; then idx_missing="$idx_missing $p"; fi
+  done < <(grep -o 'refs/[A-Za-z0-9_][A-Za-z0-9_./*-]*' "$REFS/INDEX.md" 2>/dev/null | sed -e 's/[.,]$//' | sort -u)
+  if [ -z "$(trim "$idx_missing")" ]; then
+    log "ok      every refs/ path cited in refs/INDEX.md exists"
+  else
+    log "FAIL    refs/INDEX.md cites path(s) that do not exist:$idx_missing"
+    fails=$((fails + 1))
+  fi
 
   if [ ! -d "$REFS" ]; then
     log "FAIL    refs/ does not exist"
@@ -410,7 +434,7 @@ while IFS='|' read -r name url pats; do
   sha="$(git -C "$dir" rev-parse HEAD)"
   if [ -z "$pats" ]; then mode="full"; else mode="sparse"; fi
   drop_row_from "$ROWS" "$name"
-  printf '| %s | %s | %s%s%s | %s | %s |\n' "$name" "$url" "$BT" "$sha" "$BT" "$mode" "$(dir_size "$dir")" >> "$ROWS"
+  printf '| %s | %s | %s%s%s | %s |\n' "$name" "$url" "$BT" "$sha" "$BT" "$mode" >> "$ROWS"
 done <<< "$(sources)"
 
 {
@@ -422,12 +446,15 @@ done <<< "$(sources)"
   log "Run ${BT}scripts/fetch-refs.sh${BT} to reproduce this exact state, or"
   log "${BT}scripts/fetch-refs.sh --update${BT} to move to the current branch tips."
   log ""
-  log "| Source | Repository | Commit | Checkout | Size |"
-  log "|---|---|---|---|---|"
+  log "Checkout sizes are deliberately not recorded: ${BT}du${BT} output drifts between runs, which"
+  log "would make this tracked file change on every fetch. ${BT}--verify${BT} reports the total size."
+  log ""
+  log "| Source | Repository | Commit | Checkout |"
+  log "|---|---|---|---|"
   if [ -s "$ROWS" ]; then
     cat "$ROWS"
   else
-    log "| _(nothing fetched)_ | | | | |"
+    log "| _(nothing fetched)_ | | | |"
   fi
   log ""
   log "## Sparse paths"
@@ -443,7 +470,8 @@ done <<< "$(sources)"
       log "- **$name**"
       log ""
       printf '  %s\n' "${BT}${BT}${BT}"
-      printf '%s' "$pats" | tr ';' '\n' | while IFS= read -r p; do
+      # See show_list(): without "|| [ -n "$p"" the final pattern is dropped.
+      printf '%s' "$pats" | tr ';' '\n' | while IFS= read -r p || [ -n "$p" ]; do
         if [ -n "$p" ]; then printf '  %s\n' "$p"; fi
       done
       printf '  %s\n' "${BT}${BT}${BT}"

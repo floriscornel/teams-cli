@@ -6,18 +6,21 @@ Pinned commits for the offline reference mirror in `refs/` (see PLAN.md Phase 0)
 Run `scripts/fetch-refs.sh` to reproduce this exact state, or
 `scripts/fetch-refs.sh --update` to move to the current branch tips.
 
-| Source | Repository | Commit | Checkout | Size |
-|---|---|---|---|---|
-| graph | https://github.com/microsoftgraph/microsoft-graph-docs-contrib | `4ad99fd37a9e2e8538275a0a9cdff7907052f3ec` | sparse | 34M |
-| openapi | https://github.com/microsoftgraph/msgraph-metadata | `7b2914c8ad1340129f52aa785f13c074cb46fd7c` | sparse | 47M |
-| entra | https://github.com/MicrosoftDocs/entra-docs | `231747abc59ae3d50c74e215c1cdd592eb980723` | sparse | 9.6M |
-| msteams | https://github.com/MicrosoftDocs/msteams-docs | `0eeef5f901b78f06b5548dfb78b0225f05583fa6` | sparse | 2.1M |
-| kql | https://github.com/SharePoint/sp-dev-docs | `dca876a1a6efe34e0b2495fb8c29de3c72e794ff` | sparse | 1.1M |
-| msal-go | https://github.com/AzureAD/microsoft-authentication-library-for-go | `637b540f84c3557318bdb473c353c86e5b2220fd` | full | 1.8M |
-| msal-ext | https://github.com/AzureAD/microsoft-authentication-extensions-for-go | `f11cb8f0d30f858c49f4e90de80a6b43ce40a5b0` | full | 368K |
-| azure-sdk | https://github.com/Azure/azure-sdk-for-go | `add0a52e5962cfa2761d751b858c97456fa25f10` | sparse | 6.1M |
-| anthropic | https://github.com/anthropics/anthropic-sdk-go | `c9ebe447ac92c91748af817c265398e5d81ca49f` | full | 10M |
-| teams-mcp | https://github.com/floriscornel/teams-mcp | `b01182db9e450a2e3079bfa9a56d3e7f4e029693` | sparse | 816K |
+Checkout sizes are deliberately not recorded: `du` output drifts between runs, which
+would make this tracked file change on every fetch. `--verify` reports the total size.
+
+| Source | Repository | Commit | Checkout |
+|---|---|---|---|
+| graph | https://github.com/microsoftgraph/microsoft-graph-docs-contrib | `4ad99fd37a9e2e8538275a0a9cdff7907052f3ec` | sparse |
+| openapi | https://github.com/microsoftgraph/msgraph-metadata | `7b2914c8ad1340129f52aa785f13c074cb46fd7c` | sparse |
+| entra | https://github.com/MicrosoftDocs/entra-docs | `231747abc59ae3d50c74e215c1cdd592eb980723` | sparse |
+| msteams | https://github.com/MicrosoftDocs/msteams-docs | `0eeef5f901b78f06b5548dfb78b0225f05583fa6` | sparse |
+| kql | https://github.com/SharePoint/sp-dev-docs | `dca876a1a6efe34e0b2495fb8c29de3c72e794ff` | sparse |
+| msal-go | https://github.com/AzureAD/microsoft-authentication-library-for-go | `637b540f84c3557318bdb473c353c86e5b2220fd` | full |
+| msal-ext | https://github.com/AzureAD/microsoft-authentication-extensions-for-go | `f11cb8f0d30f858c49f4e90de80a6b43ce40a5b0` | full |
+| azure-sdk | https://github.com/Azure/azure-sdk-for-go | `add0a52e5962cfa2761d751b858c97456fa25f10` | sparse |
+| anthropic | https://github.com/anthropics/anthropic-sdk-go | `c9ebe447ac92c91748af817c265398e5d81ca49f` | full |
+| teams-mcp | https://github.com/floriscornel/teams-mcp | `b01182db9e450a2e3079bfa9a56d3e7f4e029693` | sparse |
 
 ## Sparse paths
 
@@ -44,27 +47,32 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   api-reference/v1.0/resources/teamwork*
   concepts/teams*
   concepts/search-concept-messages*
+  concepts/search-concept-chat-messages*
   concepts/throttling*
   concepts/paging*
   concepts/json-batching*
   concepts/permissions-reference*
   concepts/query-parameters*
   concepts/delta-query*
+  /includes/throttling-teams.md
   api-reference/v1.0/includes/permissions/*
   api-reference/v1.0/resources/itembody*
   api-reference/v1.0/resources/identityset*
   api-reference/v1.0/resources/conversationmember*
+  api-reference/v1.0/resources/aaduserconversationmember*
   ```
 
 - **openapi**
 
   ```
+  /openapi/v1.0/openapi.yaml
   ```
 
 - **entra**
 
   ```
   docs/identity-platform/*.md
+  docs/identity-platform/**/*.md
   ```
 
 - **msteams**
@@ -75,11 +83,13 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   msteams-platform/bots/how-to/conversations/*.md
   /msteams-platform/includes/bots/user-mention.md
   msteams-platform/task-modules-and-cards/cards/cards-format*
+  msteams-platform/graph-api/**/*.md
   ```
 
 - **kql**
 
   ```
+  /docs/general-development/keyword-query-language-kql-syntax-reference.md
   ```
 
 - **msal-go** -- full checkout
@@ -91,6 +101,7 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   ```
   sdk/azcore/**
   sdk/azidentity/**
+  sdk/security/keyvault/azsecrets/**
   ```
 
 - **anthropic** -- full checkout
@@ -99,4 +110,8 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
 
   ```
   src/**
+  /package.json
+  /vitest.config.ts
+  /tsconfig.json
+  /.github/workflows/*
   ```

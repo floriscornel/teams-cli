@@ -21,13 +21,16 @@ or any Teams URL or KQL handling:
 | Graph endpoints, permissions, error shapes | `refs/graph/` |
 | Graph v1.0 OpenAPI description (feeds the Layer 6 contract tests) | `refs/openapi/` |
 | Entra identity platform: device code, auth code + PKCE, refresh tokens, lifetimes, AADSTS codes | `refs/entra/` |
-| Teams platform: deep links, message formatting, mentions, hosted content | `refs/msteams/` |
+| Teams platform: deep links (the URL formats `internal/ref` parses), message formatting | `refs/msteams/` |
 | KQL syntax for `/search/query` | `refs/kql/` |
-| MSAL Go and its cache extensions | `refs/msal-go/`, `refs/msal-ext/` |
-| Azure SDK for Go: `azidentity`, `azsecrets` | `refs/azure-sdk/` |
-| Anthropic Go SDK | `refs/anthropic/` |
-| teams-mcp reference implementation | `refs/teams-mcp/` |
+| MSAL Go; cache extensions live in `refs/msal-ext/cache/` (the module root) | `refs/msal-go/`, `refs/msal-ext/` |
+| Azure SDK for Go: `azidentity`, `azsecrets` (+ its `fake` server) | `refs/azure-sdk/` |
+| Anthropic Go SDK (model IDs, tool runner, Foundry) | `refs/anthropic/` |
+| teams-mcp reference implementation (`src/`, `vitest.config.ts`, CI) | `refs/teams-mcp/` |
 | Go libraries (module cache paths, `go doc` usage) | `refs/GO_LIBS.md` |
+
+`refs/INDEX.md` also records what the docs do *not* say (unverified properties, known gaps) — read
+those notes before treating an MCP behavior as documented.
 
 Reproduce or repair the mirror:
 
@@ -35,8 +38,11 @@ Reproduce or repair the mirror:
 scripts/fetch-refs.sh          # idempotent; keeps the SHAs pinned in refs/MANIFEST.md
 scripts/fetch-refs.sh --update # move every source to its branch tip, prints a SHA changelog
 scripts/fetch-refs.sh --list   # sources, URLs, sparse paths
-scripts/fetch-refs.sh --verify # spot checks and the refs/ size budget
+scripts/fetch-refs.sh --verify # doc spot checks, refs/INDEX.md path check, size budget
 ```
+
+`refs/MANIFEST.md` is generated: never hand-edit it, and keep a run of the script free of diffs (if it
+dirties the file, fix the script).
 
 A sandboxed environment (agent runner, container) may not allow writing the global Go cache.
 Point Go at the checkout instead, then fetch:
