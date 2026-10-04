@@ -225,13 +225,18 @@ func TestGenerateIsDeterministic(t *testing.T) {
 
 // TestGenerateWithoutRefsFailsClearly pins the required failure mode: a clear
 // message naming what to run, not a panic or a bare stat error.
+//
+// The messages carry the path the generator looked for, which is built with
+// filepath.Join, so the assertions go through filepath.ToSlash: on Windows the
+// same message reads `refs\graph\api-reference\...` and used to fail this test
+// (the first CI run of this package on windows-latest, 2026-10-04).
 func TestGenerateWithoutRefsFailsClearly(t *testing.T) {
 	t.Run("no mirror at all", func(t *testing.T) {
 		_, err := Generate(t.TempDir())
 		if err == nil {
 			t.Fatal("Generate succeeded against an empty directory")
 		}
-		msg := err.Error()
+		msg := filepath.ToSlash(err.Error())
 		for _, want := range []string{"refs", "scripts/fetch-refs.sh"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("error %q does not mention %q", msg, want)
@@ -251,7 +256,7 @@ func TestGenerateWithoutRefsFailsClearly(t *testing.T) {
 		if err == nil {
 			t.Fatal("Generate succeeded without the api-reference")
 		}
-		msg := err.Error()
+		msg := filepath.ToSlash(err.Error())
 		for _, want := range []string{apiReferenceDir, "scripts/fetch-refs.sh"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("error %q does not mention %q", msg, want)
@@ -288,7 +293,7 @@ func TestGenerateWithoutRefsFailsClearly(t *testing.T) {
 		if err == nil {
 			t.Fatal("Generate succeeded without the OpenAPI description")
 		}
-		msg := err.Error()
+		msg := filepath.ToSlash(err.Error())
 		for _, want := range []string{openAPISource, "scripts/fetch-refs.sh"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("error %q does not mention %q", msg, want)

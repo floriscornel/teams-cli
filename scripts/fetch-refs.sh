@@ -226,6 +226,21 @@ verify() {
     fi
   }
 
+  # ripgrep is much faster over the ~115 MB mirror, but it is not installed
+  # everywhere: a bare CI runner (or a container) has no `rg`, and the first CI
+  # run of this script failed every spot check with "rg: command not found".
+  # `grep -rl` is the portable fallback. Both branches swallow the "no match"
+  # exit status, so `set -o pipefail` cannot abort the run before the check
+  # reports it.
+  vsearch() {
+    local pattern="$1" path="$2"
+    if command -v rg >/dev/null 2>&1; then
+      rg -l --no-messages -- "$pattern" "$path" || true
+    else
+      grep -rl --exclude-dir=.git -e "$pattern" "$path" 2>/dev/null || true
+    fi
+  }
+
   vcheck() {
     local desc="$1" pattern="$2" path="$3"
     if [ ! -e "$path" ]; then
@@ -233,7 +248,7 @@ verify() {
       fails=$((fails + 1))
       return 0
     fi
-    hits="$(rg -l --no-messages -- "$pattern" "$path" | wc -l | tr -d ' ')"
+    hits="$(vsearch "$pattern" "$path" | wc -l | tr -d ' ')"
     if [ "$hits" -gt 0 ]; then
       log "ok      $desc -- $hits file(s)"
     else

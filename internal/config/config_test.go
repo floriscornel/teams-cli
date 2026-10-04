@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -75,6 +76,14 @@ func TestSaveIsPrivate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.toml")
 	if err := Default().Save(path); err != nil {
 		t.Fatal(err)
+	}
+	// Windows has no POSIX mode bits: Go maps 0600 onto the file's ACL there, so
+	// Mode().Perm() reads back as 0666 and the assertion below cannot hold. What
+	// protects the config on Windows is the ACL of the user profile it lives in.
+	// The other mode assertions in this repo are guarded the same way
+	// (internal/store, internal/auth/tokenstore).
+	if runtime.GOOS == "windows" {
+		t.Skip("windows has no POSIX file modes; the config file's ACL is what protects it")
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
