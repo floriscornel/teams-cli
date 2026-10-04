@@ -8,9 +8,9 @@ reproducible with `scripts/fetch-refs.sh`.
 
 **Before writing or changing any Graph call, auth flow, Teams URL or KQL query:** find the topic
 here, read the file, and cite its path in the PR (a `Refs:` line). Do not guess an API shape
-from memory. CLAUDE.md has the full rule.
+from memory. AGENTS.md has the full rule.
 
-```ash
+```bash
 scripts/fetch-refs.sh            # reproduce the mirror at the SHAs pinned in refs/MANIFEST.md
 scripts/fetch-refs.sh --update   # move every source to its branch tip, prints a SHA changelog
 scripts/fetch-refs.sh --list     # sources, URLs, sparse paths
@@ -256,7 +256,7 @@ glamour, huh, isatty, MSAL Go, msal-extensions, azidentity, azsecrets, goldmark,
 html-to-markdown, gojq, toml, anthropic-sdk-go, testscript, kin-openapi, go-vcr). It is regenerated
 by `scripts/fetch-refs.sh` and skipped with `--skip-go-libs`.
 
-```ash
+```bash
 rg "WithHTTPClient" "$(go env GOMODCACHE)"   # library source is greppable next to the docs
 cd scripts/golibs && go doc github.com/spf13/cobra.Command
 ```
