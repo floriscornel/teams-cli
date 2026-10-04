@@ -46,12 +46,13 @@ builds:
       # (refs/.../builders/go.md "Reproducibility").
       - -trimpath
     ldflags:
-      # Same variable names as `mise run build`/`install` (main.version/commit/
-      # date in cmd/teams). `main.date` uses CommitDate (not the build time) so
-      # a rebuild of the same commit is byte-identical.
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .Commit }}
-      - -X main.date={{ .CommitDate }}
+      # The variables live in internal/cli, not in cmd/teams (a bare wrapper that
+      # only calls cli.Main): `-X main.version` would silently do nothing. Same
+      # names and values as `mise run build`/`install`. `cli.Date` uses CommitDate
+      # (not the build time) so a rebuild of the same commit is byte-identical.
+      - -X github.com/floriscornel/teams-cli/internal/cli.Version={{ .Version }}
+      - -X github.com/floriscornel/teams-cli/internal/cli.Commit={{ .Commit }}
+      - -X github.com/floriscornel/teams-cli/internal/cli.Date={{ .CommitDate }}
     goos:
       - darwin
       - linux
