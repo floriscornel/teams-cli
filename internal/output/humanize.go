@@ -18,6 +18,7 @@ func HumanAge(now, t time.Time) string {
 	}
 	out := HumanDuration(d)
 	if out == "now" {
+		// "now ago" reads badly, and this is exactly what a fresh login sees.
 		return "now"
 	}
 	if future {

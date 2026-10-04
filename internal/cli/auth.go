@@ -286,7 +286,9 @@ func (a *App) statusPayload(client *auth.Client, status auth.Status) statusPaylo
 	}
 	if !status.LastRefresh.IsZero() {
 		payload.LastRefresh = status.LastRefresh.UTC().Format("2006-01-02T15:04:05Z07:00")
-		payload.RefreshAge = output.HumanDuration(client.Metadata().RefreshAge(now))
+		// HumanAge already carries the suffix ("3m ago", "now"), so the display
+		// must not add another one.
+		payload.RefreshAge = output.HumanAge(now, status.LastRefresh)
 		payload.RefreshWarning = client.Metadata().RefreshWarning(now)
 	}
 	seen := map[string]bool{}
@@ -327,7 +329,7 @@ func (a *App) printStatus(payload statusPayload, status auth.Status) {
 		pairs = append(pairs, [2]string{"access token expires", payload.ExpiresOn})
 	}
 	if payload.RefreshAge != "" {
-		pairs = append(pairs, [2]string{"refresh token renewed", payload.RefreshAge + " ago"})
+		pairs = append(pairs, [2]string{"refresh token renewed", payload.RefreshAge})
 	}
 	pairs = append(pairs,
 		[2]string{"requested scopes", strings.Join(payload.RequestedScopes, " ")},
