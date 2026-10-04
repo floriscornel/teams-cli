@@ -319,9 +319,22 @@ jobs:
         shell: bash
         # TEAMS_NO_UPDATE_CHECK also keeps the smoke test off the network
         # (PLAN.md "Other dev experience" -> Update check).
+        #
+        # The snapshot's own version is asserted, not just that something prints:
+        # v1.0.0 shipped a binary built with `-X main.version=…`, which sets
+        # nothing (cmd/teams is a wrapper), so `teams version` said "dev" and
+        # `version --check` had nothing to compare. See internal/cli/buildinfo.go
+        # and `scripts/smoke.sh --expect-version`.
         env:
           TEAMS_NO_UPDATE_CHECK: "1"
-        run: teams version
+        run: |
+          set -euo pipefail
+          version_output="$(teams version)"
+          echo "$version_output"
+          case "$version_output" in
+            *"SNAPSHOT"*) echo "::notice::the binary reports its build version" ;;
+            *) echo "::error::teams version does not carry the snapshot version (ldflags did not reach internal/cli.Version)"; exit 1 ;;
+          esac
 
       - name: teams auth status must exit 3 (auth required)
         shell: bash
