@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/floriscornel/teams-cli/internal/auth/tokenstore"
 	"github.com/floriscornel/teams-cli/internal/clock"
@@ -63,7 +62,7 @@ func newIDPEnv(t *testing.T, consented []string, expiresIn int) *idpEnv {
 			TokenStore:   "auto",
 		},
 		Paths:                    paths,
-		Clock:                    clock.NewFake(time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)),
+		Clock:                    clock.NewFake(testNow()),
 		Environ:                  []string{},
 		HTTPClient:               idp.HTTPClient(),
 		DisableInstanceDiscovery: true,
