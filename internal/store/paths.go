@@ -145,6 +145,11 @@ func (p Paths) AliasesFile() string { return filepath.Join(p.StateDir, "aliases.
 // out of it (PLAN.md:92).
 func (p Paths) AuthMetadataFile() string { return filepath.Join(p.StateDir, "auth.json") }
 
+// UpdateFile is the update check's cache: when it last ran and what the newest
+// release was. It is per profile because every state file is, and it holds
+// nothing sensitive.
+func (p Paths) UpdateFile() string { return filepath.Join(p.StateDir, "update.json") }
+
 // AIDir holds session history and memory for this profile.
 func (p Paths) AIDir() string { return filepath.Join(p.StateDir, "ai") }
 

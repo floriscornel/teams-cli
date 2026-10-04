@@ -41,6 +41,11 @@ install teams ~/.local/bin/teams
 go install github.com/floriscornel/teams-cli/cmd/teams@latest
 ```
 
+The archives also carry the man pages (`man teams`) and shell completions for
+bash, zsh, fish and PowerShell (`completions/`). Without an archive,
+`teams completion bash` prints the same script, and `teams version --check` says
+whether a newer release exists.
+
 Every release ships `checksums.txt`, signed with cosign keyless and covered by a
 GitHub build-provenance attestation:
 
@@ -352,16 +357,17 @@ else is refused.
 
 ## Status
 
-Reading and writing are implemented and usable; no release has been tagged yet.
-What is left, in order:
+Reading, writing and the polish work are done: the binary is what this README
+describes, and this documentation is also published at
+**<https://floriscornel.github.io/teams-cli/>** (generated from the repository).
+The first tagged release, `v1.0.0`, is the maintainer's next step.
 
-1. **Polish and v1.0** — a documentation site, `teams version --check`, and the
-   remaining packaging polish. Shell completions and the man pages already ship
-   (`teams completion bash`, `man teams`).
-2. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
+After that, in order:
+
+1. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
    OpenAI-compatible or Azure/Foundry provider, conversation history and curated
    memory. Opt-in, off by default.
-3. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
+2. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
    and a CI guide, for unattended runners.
 
 [PLAN.md](PLAN.md) is the full design and the reasoning behind each decision.
@@ -376,7 +382,8 @@ version for a checkout:
 mise trust && mise install
 mise run check        # fmt, tidy, lint, tests with coverage, contract checks
 mise run test         # go test -race -shuffle=on ./...
-mise run docs         # regenerate docs/commands and the man pages
+mise run docs         # regenerate docs/commands, the man pages and completions
+mise run docs-site    # render the documentation site into dist/docs-site
 ```
 
 [AGENTS.md](AGENTS.md) explains the layout and the rules (in particular: read the

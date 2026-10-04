@@ -1,0 +1,88 @@
+# pages.yml -- publish the documentation site (PLAN.md Phase 5, "docs site").
+#
+# The site is generated, never committed: `mise run docs-site` renders README.md
+# and the generated docs/commands/*.md into dist/docs-site with no Node, no Hugo
+# and no theme (internal/testing/docsite), and this workflow uploads that
+# directory as a Pages artifact. GitHub Pages is the only host, so the site
+# needs no credentials beyond the workflow's own OIDC token.
+#
+# Conventions shared with ci.yml: least-privilege permissions, third-party
+# actions pinned by full commit SHA with the release tag in a comment (Renovate
+# bumps them), every step runs a mise task, and the only version pinned here is
+# the mise binary.
+#
+# Local equivalent: `mise run docs-site` (writes dist/docs-site; open
+# dist/docs-site/index.html or serve it with `python3 -m http.server`).
+
+name: pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Least privilege for a Pages deployment: read the repository, write the Pages
+# artifact, and mint the OIDC token deploy-pages exchanges for a deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one half-way: a cancelled deploy can
+# leave the site showing an older build.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # renovate: datasource=github-releases depName=jdx/mise
+  MISE_VERSION: "2026.9.18"
+
+jobs:
+  build:
+    name: build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install mise (and the pinned tools from mise.toml)
+        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
+        with:
+          version: ${{ env.MISE_VERSION }}
+
+      - name: Cache the Go module and build caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/gopath/pkg/mod
+            .cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      # The site renders the *committed* command docs, so a stale docs/commands
+      # would publish a stale site; the docs job in ci.yml is what fails on that.
+      - name: Render the site
+        run: mise run docs-site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist/docs-site
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -141,7 +141,7 @@ done
 '''
 
 [tasks.docs]
-description = "Regenerate docs/commands and the man pages"
+description = "Regenerate docs/commands, the man pages and the completion scripts"
 run = "go run ./internal/testing/docgen -dir docs"
 
 [tasks.docs-check]
@@ -151,8 +151,12 @@ run = [
   # Only the generated trees are compared: diffing all of docs/ would also fail
   # on an uncommitted prose edit (docs/ci.md, docs/spike/), which is not what
   # this check is about.
-  "git diff --exit-code -- docs/commands docs/man || { echo \"the generated docs are out of date: run 'mise run docs' and commit the result\" >&2; exit 1; }",
+  "git diff --exit-code -- docs/commands docs/man docs/completion || { echo \"the generated docs are out of date: run 'mise run docs' and commit the result\" >&2; exit 1; }",
 ]
+
+[tasks.docs-site]
+description = "Render the user documentation into a static site (dist/docs-site)"
+run = "go run ./internal/testing/docsite -root . -out dist/docs-site"
 
 [tasks.refs-fetch]
 description = "Fetch/refresh the vendored reference mirror at the pinned SHAs"

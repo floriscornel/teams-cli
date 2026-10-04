@@ -6,3 +6,22 @@ stdout 'go'
 exec teams version --json
 stdout '"version":'
 stdout '"commit":'
+
+# --check asks GitHub Releases (a fake here, pointed at through the harness) and
+# reports the newest tag. This build is unversioned, so nothing is compared.
+env TEAMS_NO_UPDATE_CHECK=
+exec teams version --check
+stdout 'the latest release is v9.9.9'
+stdout 'reports no version'
+stderr 'checking GitHub Releases'
+
+exec teams version --check --json
+stdout '"latest": "v9.9.9"'
+stdout '"unversioned": true'
+stdout '"outdated": false'
+
+# The check is opt-out, and an explicit --check says so rather than ignoring it.
+env TEAMS_NO_UPDATE_CHECK=1
+! exec teams version --check
+stderr 'the update check is disabled'
+stderr 'update_check = true'

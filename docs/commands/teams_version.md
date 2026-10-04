@@ -2,14 +2,23 @@
 
 Print the CLI version and build information
 
+### Synopsis
+
+Print the version, the commit and the build date.
+
+With --check, ask GitHub Releases whether a newer `teams` exists. The check is
+opt-out (`TEAMS_NO_UPDATE_CHECK=1` or `update_check = false` in the config), and
+outside a terminal it only ever runs because --check asked for it.
+
 ```
-teams version [flags]
+teams version [--check] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for version
+      --check   check GitHub Releases for a newer version
+  -h, --help    help for version
 ```
 
 ### Options inherited from parent commands

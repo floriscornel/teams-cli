@@ -350,8 +350,11 @@ func (a *App) newRootCmd() *cobra.Command {
 		// A successful command persists what name resolution learned, so the next
 		// run resolves a team, channel or person without another scan
 		// (PLAN.md:170). A failed command leaves the cache alone.
-		PersistentPostRunE: func(*cobra.Command, []string) error {
+		PersistentPostRunE: func(cmd *cobra.Command, _ []string) error {
 			a.saveEntityCache()
+			// The update check is interactive-only, at most once a day (the cache
+			// decides), and silent on failure (PLAN.md:351).
+			a.noticeNewerVersion(cmd.Context())
 			return nil
 		},
 	}

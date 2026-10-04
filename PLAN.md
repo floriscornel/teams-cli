@@ -307,7 +307,7 @@ The GoReleaser docs are mirrored (`refs/goreleaser/www/content/`); cite them lik
 
 ### Toolchain and local workflow
 - `go.mod` pins the Go version with a `go` directive. `iter.Seq2` needs Go ≥ 1.23, and the dev machines run 1.27. `mise.toml` pins the same version for the toolchain mise installs — mise cannot read a plain `go` directive from go.mod (it only reads a `toolchain` line, and go.mod deliberately carries none), so a bump touches both files, and a Renovate rule keeps the `go` bump a reviewed change rather than a routine PR.
-- **`mise.toml` is the single entry point for both humans and CI** (revised 2026-10-04, replacing the Makefile): `mise run lint test cover contract fuzz-short snapshot release docs-check refs-check smoke-live record`. Every CI step runs a mise task, so "works locally" means the same thing as "works in CI".
+- **`mise.toml` is the single entry point for both humans and CI** (revised 2026-10-04, replacing the Makefile): `mise run lint test cover contract fuzz-short snapshot release docs docs-check docs-site refs-check smoke-live record`. Every CI step runs a mise task, so "works locally" means the same thing as "works in CI".
   - Why mise and not make: the Windows CI runner ships no `make` (that row used to run `go test` by hand and needed a documented exception), mise installs and pins every tool the workflows need (Go, golangci-lint, GoReleaser, cosign, syft, govulncheck) so the three separate setup actions disappear, it has the same file-target freshness semantics the Makefile had (`sources`/`outputs` on the `build` task), and Renovate has a native `mise` manager that bumps the pins. The two tools every job needs sit under `[tools]`; release-time and scan-time tools are declared on the task that uses them, so `mise install` stays small.
   - `mise.toml` also keeps the Go caches inside the checkout (`GOPATH`/`GOMODCACHE`/`GOCACHE` under `.cache/`), so a sandboxed runner that cannot write the global cache works unchanged. CI caches those exact paths explicitly (`actions/cache`, keyed on `go.sum`); `actions/setup-go` caches the *global* paths instead, which no task reads.
 - `golangci-lint` v2 with a committed `.golangci.yml`:
@@ -324,6 +324,7 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
 |---|---|---|
 | `ci.yml` | PR, push to `main` | **lint** (`mise run fmt-check`, `lint` — which validates `.golangci.yml` first — `tidy`, `release-check`), **test** (matrix ubuntu/macos/windows: `mise run test` = `go test -race -shuffle=on ./...` and testscript), **coverage** (`mise run cover`: one suite run with a merged profile, the 80% gate, upload to Codecov as in the MCP repo), **vuln** (`mise run vuln`), **build** (`mise run snapshot` = the full cross-compile matrix; upload `dist/` as an artifact for the smoke job), **smoke** (installs the snapshot on clean runners with no Go, no Node and no mise), **docs** (regenerate `docs/commands` and man pages, fail on diff), **refs-check** (fetch the mirror at the pinned SHAs, verify it, regenerate the Layer 6 inputs, fail on diff), **pr-title** (Conventional Commits, see below) |
 | `release.yml` | tag `v*` | installs mise and runs `mise run release` → `goreleaser release --clean` → GitHub Release with the archives, `checksums.txt`, SBOMs and a cosign keyless signature, then `actions/attest-build-provenance` over the checksum file. **Nothing is published outside this repository** (no cask, no bucket, no winget PR, no deb/rpm/apk) |
+| `pages.yml` | push to `main`, manual | renders `README.md` + the generated `docs/commands` into a static site (`mise run docs-site`) and deploys it to GitHub Pages. Generated output, no static-site generator, no third-party host |
 | `nightly.yml` | cron | longer fuzzing (`FUZZTIME=10m mise run fuzz-short`), the spec-drift check (`mise run contract`, i.e. Layer 6 without the race detector), and `refs-check` (reused from `ci.yml` via `workflow_call`) |
 
 **Tests never need `refs/`.** The Layer 6 inputs (the trimmed spec and the route list) are generated from `refs/` but **committed**. Only `refs-check` touches the mirror, so ordinary PR CI stays fast and works offline.
@@ -352,10 +353,11 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
 - **Repo hygiene:** CODEOWNERS; branch protection on `main` that requires `ci.yml`; Renovate (or Dependabot) for Go modules and Actions; a `SECURITY.md` with private vulnerability reporting.
 - **Coverage scope:** ≥ 80% statements, matching the MCP's 80 thresholds in [vitest.config.ts](refs/teams-mcp/vitest.config.ts) (which excludes `**/index.ts` and `**/test-utils/**`). The Go equivalent excludes **only** `cmd/teams/main.go` (a 5-line wrapper), `internal/testing/...` (fakes and devserver) and generated code. The exclusion list lives in the `cover` task in `mise.toml`, and any change to it needs review.
 - **Docs:**
-  - README quickstart;
-  - generated `docs/commands/*.md` and man pages from cobra;
-  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault;
-  - an "App registration" guide.
+  - a user-facing README (install, sign in, the command surface, scripting, troubleshooting);
+  - generated `docs/commands/*.md`, man pages and shell completion scripts from cobra (`mise run docs`);
+  - a documentation site rendered from those two by `internal/testing/docsite` and published to GitHub Pages by `pages.yml`;
+  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault (Phase 7);
+  - an "App registration" guide (Phase 5, the remaining polish).
 
 ## Implementation phases
 
@@ -610,7 +612,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
   `--subject` on a chat is sent because the spike stored it, but no live tenant has been asked to render it; and the
   accepted reaction set is Graph's, so the CLI passes any string through.
 
-### Phase 5: Polish and v1.0 (was Phase 7; swapped 2026-10-04)
+### Phase 5: Polish and v1.0 (was Phase 7; swapped 2026-10-04; done except the tag)
 completions, man pages, docs site, update check — and the v1.0 tag.
 Extra install channels are *not* part of v1.0: releases stay GitHub-only (archive download or `go install`), and a Homebrew cask (+ notarization), Scoop, winget, nfpm packages or a `curl | sh` installer would each need a second repository, a secret or a review queue. Revisit only if users ask (see "Install channels" above).
 
@@ -627,6 +629,31 @@ which stay opt-in and hidden until a provider is configured, so their absence is
 provider abstraction (Anthropic, OpenAI-compatible, Foundry with Entra), `summarize`, `draft`, `ask`, consent, `--show-prompt`;
 then sessions (`-c`/`--resume`, history retention, prompt caching), curated memory with confirm-to-save, `catchup` + watches,
 and the REPL. Ship the first four before the UX layer so the history format is designed against real usage.
+
+#### What Phase 5 actually shipped, and the decisions it forced
+- **Landed:** `teams version --check` (and the once-a-day notice), the shell completion scripts, and the documentation
+  site. `internal/update` owns the check; `internal/testing/docgen` now also writes `docs/completion/`, which the release
+  archives carry beside the man pages; `internal/testing/docsite` renders `README.md` and the generated command pages into
+  a self-contained static site that `pages.yml` deploys to GitHub Pages.
+- **The update check is opt-out, never automatic off a terminal, and never fatal.** PLAN.md:351 fixed the first two
+  ("never automatic in non-interactive mode", disabled by `TEAMS_NO_UPDATE_CHECK` or `update_check = false`); the third
+  is what makes it safe to run at all: an offline machine, an api.github.com rate limit or a proxy all stay silent, and
+  the answer is cached for 24 h in the profile's state dir, so the cost is one request a day. It asks
+  `GET /repos/floriscornel/teams-cli/releases/latest`, which is public and carries no user data.
+- **An unversioned build is not compared.** A plain `go build`, `go run` or the test binary reports `dev`, and comparing
+  "dev" against a release would either lie or crash; `teams version --check` says the latest release and that this build
+  reports no version instead.
+- **The site is generated from the repository's own markdown, with no static-site generator.** `pages.yml` runs
+  `mise run docs-site`, uploads `dist/docs-site` and deploys it, so the site cannot drift from the CLI: every command
+  page comes from the same cobra tree the man pages and completions do. The generator rewrites the README's links (a
+  command page becomes a site page, anything else becomes a blob link) and inlines its stylesheet, so the output works
+  on Pages, behind any static host, or from `file://`.
+- **The completion scripts are committed, not just printed.** `teams completion bash` already worked; shipping the same
+  bytes in `docs/completion/` means an archive install is complete without running the CLI, and `docs-check` fails if the
+  generated scripts drift from the command tree.
+- **Licence:** MIT, added with this phase so the first release has one.
+- **Open for the tag:** the `v1.0.0` tag itself is a maintainer action (`git tag -s` and the release workflow), and the
+  "App registration" guide is still to write. Everything else PLAN.md listed for this phase is in.
 
 ### Phase 7: Bot/headless (was Phase 5; swapped 2026-10-04)
 file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.

@@ -39,6 +39,12 @@ type Hooks struct {
 	// exercise the scope gate without a full MSAL login. nil means "read the
 	// token".
 	GrantedScopes []string
+	// UpdateBaseURL points the update check at a fake GitHub API. Empty means
+	// the real api.github.com; like the other URLs here there is no flag or
+	// environment variable for it, so a released binary cannot be redirected.
+	UpdateBaseURL string
+	// UpdateHTTPClient is the HTTP client for the update check.
+	UpdateHTTPClient *http.Client
 }
 
 // SetHooks installs the test seams on this App.

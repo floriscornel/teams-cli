@@ -17,6 +17,8 @@ package cli_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,6 +36,9 @@ import (
 const (
 	envGraphURL  = "TEAMS_TEST_GRAPH_URL"
 	envAuthority = "TEAMS_TEST_AUTHORITY"
+	// envUpdateURL points the update check at the fake GitHub Releases API. Like
+	// the others it is read by the test harness, never by the CLI itself.
+	envUpdateURL = "TEAMS_TEST_UPDATE_URL"
 )
 
 func TestMain(m *testing.M) {
@@ -54,6 +59,7 @@ func runTeams() {
 	app := cli.New(os.Stdin, os.Stdout, os.Stderr)
 	app.SetHooks(cli.Hooks{
 		GraphBaseURL:             os.Getenv(envGraphURL),
+		UpdateBaseURL:            os.Getenv(envUpdateURL),
 		DisableInstanceDiscovery: true,
 		// Environ stays nil on purpose: the auth and config layers then read the
 		// real environment the script set up, which is what a user's shell does.
@@ -71,6 +77,11 @@ func TestScripts(t *testing.T) {
 	servers := &scriptServers{}
 	t.Cleanup(servers.closeAll)
 	clock := func() time.Time { return time.Now().UTC().Truncate(time.Second) }
+	// One fake GitHub Releases endpoint for every script: the update check is
+	// the only outbound call the CLI makes that is not Graph, so no script may
+	// reach the real api.github.com.
+	releases := newReleasesServer()
+	t.Cleanup(releases.Close)
 
 	testscript.Run(t, testscript.Params{
 		Dir: filepath.Join("testdata", "script"),
@@ -95,6 +106,7 @@ func TestScripts(t *testing.T) {
 			e.Setenv("TEAMS_CACHE_DIR", filepath.Join(e.WorkDir, "cache"))
 			e.Setenv("TEAMS_TEST_GRAPH_URL", graph.URL())
 			e.Setenv("TEAMS_TEST_AUTHORITY", graph.URL()+"/tenant")
+			e.Setenv(envUpdateURL, releases.URL)
 			// The write scripts need a token that carries the Phase 4 scopes;
 			// the read scripts keep their own inline token.
 			e.Setenv("TEAMS_TEST_WRITE_TOKEN", scriptsWriteToken())
@@ -113,6 +125,21 @@ func TestScripts(t *testing.T) {
 		},
 		TestWork: os.Getenv("TEAMS_TESTWORK") == "1",
 	})
+}
+
+// newReleasesServer serves the GitHub releases answer the update check reads.
+// The tag is deliberately far ahead of anything this repository will build, so
+// a script that clears TEAMS_NO_UPDATE_CHECK always sees "a newer release".
+func newReleasesServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/repos/floriscornel/teams-cli/releases/latest" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9","html_url":"https://example.test/v9.9.9","published_at":"2026-10-01T00:00:00Z"}`))
+	}))
 }
 
 // scriptServers owns the per-script fake Graph servers so they can be closed

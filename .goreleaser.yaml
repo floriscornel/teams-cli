@@ -93,6 +93,11 @@ archives:
       # form). The deb/rpm/apk packages that used to consume them are gone.
       - src: docs/man/*
         dst: man
+      # The shell completion scripts are generated from the same command tree
+      # (`teams completion bash` prints the same bytes), so an archive install is
+      # complete without running the CLI once.
+      - src: docs/completion/*
+        dst: completions
 
 # ---------------------------------------------------------------------------
 # Checksums

@@ -6,14 +6,23 @@ teams-version - Print the CLI version and build information
 
 
 .SH SYNOPSIS
-\fBteams version [flags]\fP
+\fBteams version [--check] [flags]\fP
 
 
 .SH DESCRIPTION
-Print the CLI version and build information
+Print the version, the commit and the build date.
+
+.PP
+With --check, ask GitHub Releases whether a newer \fBteams\fR exists. The check is
+opt-out (\fBTEAMS_NO_UPDATE_CHECK=1\fR or \fBupdate_check = false\fR in the config), and
+outside a terminal it only ever runs because --check asked for it.
 
 
 .SH OPTIONS
+\fB--check\fP[=false]
+	check GitHub Releases for a newer version
+
+.PP
 \fB-h\fP, \fB--help\fP[=false]
 	help for version
 

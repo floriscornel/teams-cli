@@ -257,6 +257,11 @@ type Effective struct {
 	Scopes []string
 	// ReadOnly blocks every write command before any network call.
 	ReadOnly bool
+	// UpdateCheck reports whether the CLI may check GitHub Releases for a newer
+	// version (PLAN.md:351): on by default, off when `update_check = false` or
+	// TEAMS_NO_UPDATE_CHECK is set. It only ever gates the check; nothing else
+	// depends on it.
+	UpdateCheck bool
 	// ScopesSpec is what the user configured: "" (derived), a preset name or a
 	// list. `auth status` and `doctor` show it.
 	ScopesSpec string
@@ -310,6 +315,13 @@ func (c *Config) Resolve(in ResolveInput) (Effective, error) {
 		TokenStore: firstNonEmpty(p.TokenStore, DefaultTokenStore),
 		ReadOnly:   p.Mode == ModeReadOnly || in.ReadOnlyFlag || truthy(env[EnvReadOnly]),
 		ScopesSpec: p.Scopes,
+	}
+	// The update check is opt-out: absent or true means yes, and the
+	// environment can only turn it off (a CI runner sets TEAMS_NO_UPDATE_CHECK
+	// to guarantee the CLI never talks to github.com).
+	eff.UpdateCheck = c.UpdateCheck == nil || *c.UpdateCheck
+	if ParseBoolEnv(in.Environ, EnvNoUpdate) {
+		eff.UpdateCheck = false
 	}
 	endpoints, ok := cloud.Lookup(eff.Cloud)
 	if !ok {

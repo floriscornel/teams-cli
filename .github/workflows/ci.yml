@@ -367,7 +367,7 @@ jobs:
       # round trip; keep the marker list in the two in step.
 
   # ---------------------------------------------------------------------------
-  # docs: regenerate docs/commands + man pages, fail on diff
+  # docs: regenerate docs/commands + man pages + completions, fail on diff
   # ---------------------------------------------------------------------------
   docs:
     name: docs

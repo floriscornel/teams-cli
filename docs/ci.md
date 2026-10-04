@@ -23,7 +23,7 @@ task, so a green local run means a green CI run:
 | `mise run vuln` | `govulncheck ./...` | `ci.yml` → vuln |
 | `mise run snapshot` | `goreleaser build --snapshot --clean` | `ci.yml` → build |
 | `mise run release` | `goreleaser release --clean` | `release.yml` |
-| `mise run docs-check` | regenerate `docs/commands` + `docs/man`, fail on a diff in those two trees | `ci.yml` → docs |
+| `mise run docs-check` | regenerate `docs/commands` + `docs/man` + `docs/completion`, fail on a diff in those trees | `ci.yml` → docs |
 | `mise run refs-fetch` | `scripts/fetch-refs.sh` | `ci.yml` → refs-check |
 | `mise run refs-check` | `scripts/fetch-refs.sh --verify` | `ci.yml` → refs-check |
 | `mise run contract-generate` | `scripts/gen-contract.sh` | `ci.yml` → refs-check |
@@ -56,7 +56,7 @@ task installs a tool on demand (`lint`, `build`, `vuln`, `release`) set
 `cache_save_post: true` on the mise-action step, so those tools end up in mise's
 cache instead of being downloaded again on every run.
 
-`docs-check` compares only the generated trees (`docs/commands`, `docs/man`), so
+`docs-check` compares only the generated trees (`docs/commands`, `docs/man`, `docs/completion`), so
 an uncommitted prose edit under `docs/` does not fail it.
 
 **Why `actions/cache` and not `actions/setup-go`:** `mise.toml` keeps `GOPATH`,
@@ -75,6 +75,7 @@ write, keyed on `go.sum`.
 | `build` | `mise run snapshot` (the full darwin/linux/windows × amd64/arm64 matrix), uploads `dist/` as the `dist` artifact |
 | `smoke` | downloads `dist/`, installs the binary **without** mise, `setup-go` or `setup-node`, runs `teams version`, asserts `teams auth status` exits 3, and asserts no test-only endpoint flag is baked into the binary |
 | `docs` | `mise run docs-check` |
+| `pages` | `mise run docs-site`, then `actions/deploy-pages` (push to `main` and manual runs only) |
 | `refs-changed` | computes whether the mirror inputs changed (see below) |
 | `refs-check` | `mise run refs-fetch`, `mise run refs-check`, `mise run contract-generate`, then fails on a diff |
 | `pr-title` | Conventional Commits check, so GoReleaser's `changelog.use: github` grouping has something to group |
