@@ -271,3 +271,65 @@ func (scopeSet) Missing(granted, required []string) []string {
 	}
 	return missing
 }
+
+// writeScopes are the scopes the presets add that authorise a change in Teams,
+// so a read-only session does not request them. Each one is checked against the
+// read-only preset by TestWriteScopesAreNotReadScopes: a scope belongs here only
+// if the read-only preset does not carry it, which keeps "narrowing" from ever
+// removing a scope the CLI needs to read (Chat.ReadBasic, for example, is a read
+// scope that the read-only preset happens not to list).
+var writeScopes = []string{
+	"ChannelMessage.Send",
+	"ChannelMessage.ReadWrite",
+	"Chat.ReadWrite",
+	"ChatMessage.Send",
+	"Files.ReadWrite",
+	"Files.ReadWrite.All",
+}
+
+// ReadOnlyView returns the scopes a read-only session should *request*: it
+// removes the write scopes and changes nothing else. It never adds a scope, and
+// it never replaces an explicit list.
+//
+// It exists because the old behaviour — replacing the spec with the read-only
+// preset — broke reads outright for a profile with an explicit `scopes` list.
+// The preset asks for scopes the app registration was never consented for
+// (Files.Read.All, User.ReadBasic.All, People.Read), Entra consent is
+// all-or-nothing per request, and the sign-in then failed with AADSTS65001
+// before any read happened: a read-only inbox sweep failed on every command,
+// including `teams whoami`, while the same commands worked without the flag.
+//
+// Two cases:
+//
+//   - an empty or preset spec loses the write scopes the preset carries, so
+//     `full` becomes the read-only preset exactly and `chats` keeps every read
+//     scope it had;
+//   - an explicit list is left exactly as configured. The CLI cannot tell which
+//     of its scopes authorise writes, and the ones that do can be the only way to
+//     read something (`Chat.ReadWrite`, `Files.ReadWrite.All`), so dropping one to
+//     satisfy a cosmetic rule would break a read the user asked for. Writes are
+//     refused before any call regardless (PLAN.md:180): narrowing is a courtesy to
+//     the admin who reads the consent screen, not a security control.
+func (scopeSet) ReadOnlyView(spec string, scopes []string) []string {
+	if trimmed := strings.TrimSpace(spec); trimmed != "" {
+		if _, isPreset := Presets[strings.ToLower(trimmed)]; !isPreset {
+			return scopes
+		}
+	}
+	writes := make(map[string]bool, len(writeScopes))
+	for _, scope := range writeScopes {
+		writes[strings.ToLower(scope)] = true
+	}
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if !writes[strings.ToLower(scope)] {
+			out = append(out, scope)
+		}
+	}
+	if len(out) == 0 {
+		// No preset is write-only, so this is unreachable today; requesting no
+		// scopes at all would be worse than requesting the configured set.
+		return scopes
+	}
+	return out
+}

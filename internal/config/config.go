@@ -331,14 +331,17 @@ func (c *Config) Resolve(in ResolveInput) (Effective, error) {
 	if eff.GraphBaseURL == "" {
 		return Effective{}, fmt.Errorf("profile %q: cloud %q: %w", name, eff.Cloud, cloud.ErrGraphBaseUndocumented)
 	}
-	if eff.ReadOnly && p.Mode == "" {
-		// A global read-only switch narrows the requested scopes too: asking for
-		// write scopes we then refuse to use would only look alarming to admins.
-		eff.ScopesSpec = ScopePresetReadOnly
-	}
 	scopes, err := Scopes.For(eff.ScopesSpec)
 	if err != nil {
 		return Effective{}, fmt.Errorf("profile %q: %w", name, err)
+	}
+	if eff.ReadOnly {
+		// A read-only session requests fewer scopes than it is configured with —
+		// asking for write scopes we then refuse to use only alarms admins — but
+		// never a *different* set: ScopesSpec stays what the user configured, and
+		// Scopes.ReadOnlyView documents why replacing it broke reads (AADSTS65001
+		// on every command for a profile with an explicit scope list).
+		scopes = Scopes.ReadOnlyView(eff.ScopesSpec, scopes)
 	}
 	eff.Scopes = scopes
 	return eff, nil
