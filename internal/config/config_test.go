@@ -218,6 +218,131 @@ func TestReadOnlyComesFromModeEnvOrFlag(t *testing.T) {
 	}
 }
 
+// TestReadOnlyNeverReplacesAnExplicitScopeList is the regression test for a
+// reported bug: `teams --read-only` on a profile with an explicit `scopes` list
+// replaced that list with the read-only preset, whose extra scopes
+// (Files.Read.All, User.ReadBasic.All, People.Read) the app registration was not
+// consented for. Consent is all-or-nothing per request, so the sign-in failed
+// with AADSTS65001 and *every* command broke, including `teams whoami`, while the
+// same commands worked without the flag.
+func TestReadOnlyNeverReplacesAnExplicitScopeList(t *testing.T) {
+	configured := "User.Read Chat.Read ChannelMessage.Read.All"
+	cfg := &Config{Profiles: map[string]Profile{"me": {Scopes: configured}}}
+	eff, err := cfg.Resolve(ResolveInput{ReadOnlyFlag: true, Environ: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(eff.Scopes, " "); got != configured {
+		t.Errorf("Scopes = %q, want the configured list untouched (%q)", got, configured)
+	}
+	if eff.ScopesSpec != configured {
+		t.Errorf("ScopesSpec = %q, want what the user configured", eff.ScopesSpec)
+	}
+	// The whole point: nothing was added, so nothing can fail consent.
+	for _, scope := range []string{"Files.Read.All", "User.ReadBasic.All", "People.Read"} {
+		if Scopes.Missing(eff.Scopes, []string{scope}) == nil {
+			t.Errorf("read-only added %s to an explicit scope list", scope)
+		}
+	}
+}
+
+// TestReadOnlyNarrowsPresetsWithoutWidening: a preset is intersected with the
+// read-only preset rather than replaced by it, so a `chats` profile never grows
+// the channel and file scopes it was not asking for.
+func TestReadOnlyNarrowsPresetsWithoutWidening(t *testing.T) {
+	cases := []struct {
+		spec string
+		want string
+	}{
+		{"", strings.Join(Presets[ScopePresetReadOnly], " ")},
+		{ScopePresetFull, strings.Join(Presets[ScopePresetReadOnly], " ")},
+		{ScopePresetReadOnly, strings.Join(Presets[ScopePresetReadOnly], " ")},
+		{ScopePresetChats, "User.Read User.ReadBasic.All People.Read Chat.ReadBasic Chat.Read"},
+	}
+	for _, tc := range cases {
+		t.Run("scopes="+tc.spec, func(t *testing.T) {
+			cfg := &Config{Profiles: map[string]Profile{"me": {Scopes: tc.spec}}}
+			eff, err := cfg.Resolve(ResolveInput{ReadOnlyFlag: true, Environ: []string{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(eff.Scopes, " "); got != tc.want {
+				t.Errorf("Scopes = %q, want %q", got, tc.want)
+			}
+			// Whatever the preset, the narrowed request stays inside it.
+			configured, err := Scopes.For(tc.spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if missing := Scopes.Missing(configured, eff.Scopes); len(missing) > 0 {
+				t.Errorf("read-only added %v, which the configured preset does not carry", missing)
+			}
+		})
+	}
+}
+
+// TestWriteScopesAreNotReadScopes guards the invariant the narrowing rule rests
+// on: a scope may only be dropped from a read-only request if the read-only
+// preset does not carry it either, so narrowing can never remove the only scope
+// that makes a read work.
+func TestWriteScopesAreNotReadScopes(t *testing.T) {
+	readOnly := make(map[string]bool, len(Presets[ScopePresetReadOnly]))
+	for _, scope := range Presets[ScopePresetReadOnly] {
+		readOnly[strings.ToLower(scope)] = true
+	}
+	for _, scope := range writeScopes {
+		if !readOnly[strings.ToLower(scope)] {
+			continue
+		}
+		t.Errorf("%s is in the read-only preset, so dropping it removes read access", scope)
+	}
+	// And every read scope the presets carry survives the narrowing, which is the
+	// difference from intersecting with the read-only preset: Chat.ReadBasic is a
+	// read scope the read-only preset does not list.
+	for _, preset := range []string{ScopePresetChats, ScopePresetFull, ""} {
+		configured, err := Scopes.For(preset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := Scopes.ReadOnlyView(preset, configured)
+		for _, scope := range configured {
+			lower := strings.ToLower(scope)
+			readOnlyPreset := readOnly[lower]
+			if !readOnlyPreset && containsScope(writeScopes, scope) {
+				continue
+			}
+			if containsScope(got, scope) {
+				continue
+			}
+			t.Errorf("narrowing preset %q dropped %s, which is not a write scope", preset, scope)
+		}
+	}
+}
+
+// containsScope reports whether scopes holds scope, case-insensitively.
+func containsScope(scopes []string, scope string) bool {
+	for _, candidate := range scopes {
+		if strings.EqualFold(candidate, scope) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestReadOnlyViewEdgeCases(t *testing.T) {
+	// An explicit list is returned as-is, whatever it holds.
+	list := []string{"User.Read", "ChatMessage.Send"}
+	if got := Scopes.ReadOnlyView("User.Read ChatMessage.Send", list); strings.Join(got, " ") != strings.Join(list, " ") {
+		t.Errorf("ReadOnlyView(explicit) = %v, want the list untouched", got)
+	}
+	// A preset with nothing in common with the read-only set keeps its scopes
+	// rather than requesting none: no preset looks like this today, and the
+	// fallback documents what would happen.
+	if got := Scopes.ReadOnlyView(ScopePresetFull, []string{"Mail.Send"}); len(got) != 1 || got[0] != "Mail.Send" {
+		t.Errorf("ReadOnlyView(no overlap) = %v, want the configured scopes", got)
+	}
+}
+
 func TestExplicitScopesWinOverMode(t *testing.T) {
 	cfg := &Config{Profiles: map[string]Profile{"me": {Mode: ModeReadOnly, Scopes: "User.Read, Chat.Read"}}}
 	eff, err := cfg.Resolve(ResolveInput{Environ: []string{}})
