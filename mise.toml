@@ -191,7 +191,21 @@ description = "Cut a release from a signed tag (release.yml runs this)"
 # goreleaser runs `cosign` and `syft` as commands for `signs:` and `sboms:`
 # (.goreleaser.yaml), so all three are pinned here.
 tools = { goreleaser = "2.18.2", cosign = "3.1.3", syft = "1.54.0" }
-run = "goreleaser release --clean"
+# One publisher per tag. GoReleaser cannot replace an asset that already
+# exists, so a second publisher for the same tag fails on every upload — and
+# because the publish step fails, the attestation and SBOM-upload steps that
+# follow it are skipped, leaving a published release without provenance. That is
+# exactly what happened to v1.0.0 (a local run and the workflow raced). A local
+# `mise run release` therefore has to opt in; `mise run snapshot` is the local
+# rehearsal.
+run = '''
+test "${CI:-}" = "true" || test "${TEAMS_RELEASE_LOCAL:-}" = "1" || {
+  echo "release: refusing to publish from a local machine." >&2
+  echo "release: for a build-only rehearsal use 'mise run snapshot'; set TEAMS_RELEASE_LOCAL=1 to publish anyway." >&2
+  exit 1
+}
+goreleaser release --clean
+'''
 
 [tasks.smoke]
 description = "Install-free smoke test of the built binary"

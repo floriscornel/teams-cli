@@ -185,6 +185,14 @@ release:
   # Rollback is "mark the release pre-release and ship a patch tag"; never
   # re-tag, so an existing release body is kept (this is also the default).
   mode: keep-existing
+  # Uploading an asset whose name exists is a 422 on GitHub, and GoReleaser has
+  # no "skip existing" mode: a second publisher for the same tag fails on every
+  # upload, and because that step fails the attestation and SBOM-upload steps
+  # after it are skipped, leaving a published release without provenance
+  # (v1.0.0 hit exactly this). With this on, GoReleaser deletes the colliding
+  # asset and retries, so re-running a release job repairs the release instead
+  # of half-failing (refs/goreleaser/www/content/customization/publish/scm/_index.md:56-65).
+  replace_existing_artifacts: true
   # The release body starts with how to get the binary, because GitHub Releases
   # is the only install channel; the generated changelog follows it.
   header: |
