@@ -39,6 +39,10 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   api-reference/v1.0/api/drive*
   api-reference/v1.0/api/search*
   api-reference/v1.0/api/teamwork*
+  api-reference/v1.0/api/calendar*
+  api-reference/v1.0/api/calendargroup*
+  api-reference/v1.0/api/event*
+  api-reference/v1.0/api/onlinemeeting*
   api-reference/v1.0/resources/channel*
   api-reference/v1.0/resources/chat*
   api-reference/v1.0/resources/team*
@@ -46,9 +50,27 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   api-reference/v1.0/resources/drive*
   api-reference/v1.0/resources/search*
   api-reference/v1.0/resources/teamwork*
+  api-reference/v1.0/resources/calendar*
+  api-reference/v1.0/resources/event*
+  api-reference/v1.0/resources/onlinemeeting*
+  api-reference/v1.0/resources/datetimetimezone*
+  api-reference/v1.0/resources/schedule*
+  api-reference/v1.0/resources/requestschedule*
+  api-reference/v1.0/resources/attendee*
+  api-reference/v1.0/resources/attendeebase*
+  api-reference/v1.0/resources/attendeeavailability*
+  api-reference/v1.0/resources/responsestatus*
+  api-reference/v1.0/resources/location*
+  api-reference/v1.0/resources/recipient*
+  api-reference/v1.0/resources/freebusy*
+  api-reference/v1.0/resources/workinghours*
+  api-reference/v1.0/resources/timeslot*
+  api-reference/v1.0/resources/timezone*
   concepts/teams*
   concepts/search-concept-messages*
   concepts/search-concept-chat-messages*
+  concepts/search-concept-events*
+  concepts/outlook*
   concepts/throttling*
   concepts/paging*
   concepts/json-batching*
@@ -56,7 +78,10 @@ these gitignore-style patterns via `git sparse-checkout set --no-cone`:
   concepts/query-parameters*
   concepts/delta-query*
   /includes/throttling-teams.md
+  /includes/throttling-outlook.md
+  /includes/outlook*
   api-reference/v1.0/includes/permissions/*
+  includes/permissions-notes/*
   api-reference/v1.0/resources/itembody*
   api-reference/v1.0/resources/identityset*
   api-reference/v1.0/resources/conversationmember*

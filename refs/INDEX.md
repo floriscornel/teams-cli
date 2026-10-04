@@ -153,6 +153,51 @@ More things the table does not show:
   - `/me/chats?$expand=members` caps at 25 members with `$top` max 50, and supports `$orderby` on
     `lastMessagePreview/createdDateTime desc` (`api-reference/v1.0/api/chat-list.md`).
 
+### Calendar (`teams calendar`, Phase 6)
+
+Every calendar scope is requested **incrementally** at first use and is deliberately absent from the
+`read-only` / `full` presets (PLAN.md "Authentication design", decision D3): adding one to a preset makes
+every existing login ask for it, which is the `AADSTS65001` failure commit f7bd612 fixed.
+
+| CLI command / feature | Notes | HTTP request | Least privileged (delegated) |
+|---|---|---|---|
+| teams calendar list (self), show, search | `$top=100`, `$select` from the handoff | ``GET /me/calendarView`` | delegated: Calendars.ReadBasic |
+| teams calendar list --user | shared calendar first, free/busy as the fallback | ``GET /users/{id \| userPrincipalName}/calendarView`` | delegated: Calendars.ReadBasic |
+| teams calendar list --user --free-busy | the same endpoint's schedule view | ``POST /me/calendar/getSchedule`` | delegated: Calendars.ReadBasic |
+| teams calendar show <event> | one event, incl. `attendees` | ``GET /me/events/{event-id}`` | delegated: Calendars.ReadBasic |
+| teams calendar search | Search API over the **primary** calendar only | ``POST /search/query`` (`entityTypes: ["event"]`) | delegated: Calendars.Read |
+| teams calendar create | new event; `transactionId` deduplicates | ``POST /me/events`` | delegated: Calendars.ReadWrite |
+| teams calendar update | PATCH only the fields given | ``PATCH /me/events/{event-id}`` | delegated: Calendars.ReadWrite |
+| teams calendar accept / tentative / decline | `sendResponse`, optional `proposedNewTime` | ``POST /me/events/{event-id}/accept, …/tentativelyAccept, …/decline`` | delegated: Calendars.ReadWrite |
+| teams calendar cancel | organizer only | ``POST /me/events/{event-id}/cancel`` | delegated: Calendars.ReadWrite |
+| teams calendar delete | 204, then 404 on a second delete | ``DELETE /me/events/{event-id}`` | delegated: Calendars.ReadWrite |
+| teams calendar list --chat | `chatInfo.threadId` for a `joinUrl` | ``GET /me/onlineMeetings?$filter=JoinWebUrl eq '…'`` | delegated: OnlineMeetings.Read |
+| teams calendar create --teams | pre-check the mailbox, then create online | ``GET /me/calendar?$select=allowedOnlineMeetingProviders`` | delegated: Calendars.Read |
+
+The permission include paths, and the conflict the handoff resolves:
+
+- calendarView (both `/me/calendarView` and `/users/{id}/calendarView` use the same page, which also
+  documents `/me/calendar/calendarView`): `refs/graph/api-reference/v1.0/includes/permissions/user-list-calendarview-permissions.md`
+  says least privileged `Calendars.ReadBasic`, higher `Calendars.Read, Calendars.ReadWrite`. There is no
+  separate `/users/{id}/calendarView` page: `api-reference/v1.0/api/calendar-list-calendarview.md` covers
+  both, and the shared-calendar variant is documented in `concepts/outlook-get-shared-events-calendars.md`.
+- **`getSchedule` permission conflict:** `refs/graph/api-reference/v1.0/includes/permissions/calendar-getschedule-permissions.md`
+  also says `Calendars.ReadBasic`. The handoff (F1) notes the docs conflict between `ReadBasic` and `Read`
+  and picks **`Calendars.Read`** — `Calendars.ReadBasic` is documented as *not* returning the free/busy
+  detail we render (subjects and locations on your own calendar), so the CLI requests `Calendars.Read` and
+  `Calendars.Read.Shared`.
+- `event-get`: `refs/graph/api-reference/v1.0/api/event-get.md` (inline table; no include file exists).
+- `event-update` / `event-delete`: `refs/graph/api-reference/v1.0/api/event-update.md`, `…/event-delete.md`.
+- `event-accept` / `tentativelyAccept` / `decline` / `cancel`:
+  `refs/graph/api-reference/v1.0/includes/permissions/event-accept-permissions.md` and its siblings — all
+  four are `Calendars.ReadWrite` with no higher-privileged alternative.
+- `calendar-post-events`: `refs/graph/api-reference/v1.0/api/calendar-post-events.md` (inline table).
+- `onlineMeetings` list/filter: `refs/graph/api-reference/v1.0/api/onlinemeeting-get.md`,
+  `refs/graph/api-reference/v1.0/includes/permissions/onlinemeeting-get-permissions.md`.
+- Event search semantics: `refs/graph/concepts/search-concept-events.md`.
+- Throttling for these calls: `refs/graph/includes/throttling-outlook.md`
+  (included by `refs/graph/concepts/throttling-limits.md`).
+
 ### Entity shapes
 
 | Shape | Path |
@@ -169,6 +214,18 @@ More things the table does not show:
 | Chat member | `refs/graph/api-reference/v1.0/resources/conversationmember.md`, `refs/graph/api-reference/v1.0/resources/aaduserconversationmember.md` |
 | User | `refs/graph/api-reference/v1.0/resources/user.md` |
 | driveItem (files) | `refs/graph/api-reference/v1.0/resources/driveitem.md` |
+| Event (calendar event, recurrence, response) | `refs/graph/api-reference/v1.0/resources/event.md` |
+| Calendar | `refs/graph/api-reference/v1.0/resources/calendar.md`, `refs/graph/api-reference/v1.0/resources/calendar-overview.md` |
+| dateTimeTimeZone (the `{dateTime, timeZone}` pair every calendar write uses) | `refs/graph/api-reference/v1.0/resources/datetimetimezone.md` |
+| Attendee / attendeeBase | `refs/graph/api-reference/v1.0/resources/attendee.md`, `refs/graph/api-reference/v1.0/resources/attendeebase.md` |
+| ResponseStatus (the `response` in `--json`) | `refs/graph/api-reference/v1.0/resources/responsestatus.md` |
+| Location | `refs/graph/api-reference/v1.0/resources/location.md` |
+| Recipient (organizer, attendees) | `refs/graph/api-reference/v1.0/resources/recipient.md` |
+| ScheduleInformation / ScheduleItem (getSchedule) | `refs/graph/api-reference/v1.0/resources/scheduleinformation.md`, `refs/graph/api-reference/v1.0/resources/scheduleitem.md` |
+| FreeBusyError (the per-schedule `5016` shape) | `refs/graph/api-reference/v1.0/resources/freebusyerror.md` |
+| WorkingHours | `refs/graph/api-reference/v1.0/resources/workinghours.md` |
+| TimeSlot (`proposedNewTime`) | `refs/graph/api-reference/v1.0/resources/timeslot.md` |
+| onlineMeetingInfo (the `joinUrl` on an event) | `refs/graph/api-reference/v1.0/resources/onlinemeetinginfo.md` |
 
 ## 2. Graph concepts
 
@@ -451,6 +508,73 @@ Things a later phase will need that this mirror does not contain. Add the source
 - **Bare-date `sent` timezone** in Teams KQL. A time of day is honored (spike), but the boundary of a
   bare date is unconfirmed.
 - **A chat-wide "last activity" field for channel roots** (to stop a `--since` walk early) — not documented.
+
+Calendar gaps and the behaviour the mirror does not state. Everything below is **verified live
+2026-10-05 (handoff §3)** against a test tenant with a delegated token unless the row says otherwise; the
+sources in `plans/calendar.md` §3 are the docs mirrored above plus that live run.
+
+- **F11 — the shared-calendar success path is unverified.** The handoff verified the *failure* codes of
+  `/users/{id}/calendarView` but never got a calendar that was actually shared with the signed-in user, so
+  the success shape is implemented from
+  `refs/graph/api-reference/v1.0/api/calendar-list-calendarview.md` +
+  `refs/graph/concepts/outlook-get-shared-events-calendars.md` and assumed identical to `/me/calendarView`.
+  The F4 fallback below covers the failure path either way.
+- **F2 — paging and range limits are not in the docs.** `calendarView` pages 10 at a time by default, so the
+  CLI always sends `$top=100`; paging uses `@odata.nextLink` with `$skip` (the ordinary
+  `refs/graph/concepts/paging.md` rule). A range over **1825 days** is a 400 `ErrorInvalidRequest`.
+  Verified live 2026-10-05 (handoff §3).
+- **F3 — `onlineMeeting` is `$select`-dependent.** On `calendarView`, `onlineMeeting.joinUrl` comes back
+  only when `isOnlineMeeting` is in `$select` too. `GET /me/events/{id}` returns it regardless. Verified
+  live 2026-10-05 (handoff §3).
+- **F4 — the failure codes of `/users/{id}/calendarView`.** 403 `ErrorAccessDenied` and 404
+  `ErrorItemNotFound` mean "not shared with you" (the CLI falls back to getSchedule); 404
+  `MailboxNotEnabledForRESTAPI` means the user has no Exchange Online mailbox (exit 4, and `ErrorInvalidUser`
+  likewise). Verified live 2026-10-05 (handoff §3).
+- **F5 — all-day events are floating.** They always come back as `00:00:00`–`00:00:00` on their own dates
+  whatever zone is requested, and the server matches them to the window **as UTC midnight to midnight**:
+  a Tokyo-day window returned the previous day's all-day event. So the CLI widens the server window by one
+  day on each side and then filters client-side, keeping all-day events by date range only. Verified live
+  2026-10-05 (handoff §3).
+- **F6 — read UTC, convert locally.** Without `Prefer`, `start.timeZone`/`end.timeZone` is `"UTC"` and
+  `dateTime` has no offset (`2026-10-06T01:00:00.0000000`), so parse it as UTC. `Prefer: outlook.timezone`
+  does accept IANA and Windows names, but an unknown zone is a hard 400 `TimeZoneNotSupportedException`
+  rather than a fallback — which is why the CLI never sends it (decision D4). The doc sentence that the
+  query parameters are "not impacted by" `Prefer` is in
+  `refs/graph/api-reference/v1.0/api/calendar-list-calendarview.md`. Verified live 2026-10-05 (handoff §3).
+- **F7 — getSchedule.** Documented: at most 20 schedules per call, `availabilityViewInterval` 5–1440
+  (default 30). Not documented: the range is capped at **62 days** (63 is a 400 `ErrorTimeIntervalTooBig`);
+  request times are `{dateTime: "<local wall clock, no offset>", timeZone: "<IANA name>"}` and the response
+  comes back in UTC; a user with no mailbox *or* one that does not exist returns
+  `value[i].error.responseCode == "5016"` with `scheduleItems` **null** (the two cases cannot be told
+  apart); another user's unshared calendar returns only `start`, `end` and `status` — no `subject`,
+  `location` or `isPrivate` — plus `status: "free"` items, while your own calendar does include `subject`
+  and `location`; all-day items come back as midnight of the *requested* zone converted to UTC. Verified
+  live 2026-10-05 (handoff §3).
+- **F8 — event search.** Documented in `refs/graph/concepts/search-concept-events.md`: primary calendar
+  only, at most 25 per page, no sorting (a sort clause is a bad request), `event` cannot be combined with
+  other entity types, and `total` counts the current page. Not documented: `hitId` is the event ID in
+  **standard base64**, and mapping `/`→`-` and `+`→`_` turns it into a REST ID that
+  `GET /me/events/{id}` accepts; `resource.id` is absent and `summary` is empty; `resource.start`/`end`
+  carry a `Z`. Verified live 2026-10-05 (handoff §3).
+- **F9 — meeting chat ID.** `GET /me/onlineMeetings?$filter=JoinWebUrl eq '<joinUrl>'` returns exactly one
+  item with `chatInfo.threadId` = `19:meeting_…@thread.v2`, and works as an attendee on an account without
+  a Teams license. The `joinUrl` contains `%` escapes and must be quoted exactly as Graph returned it. A
+  URL that matches nothing is **not** an empty list: it is a 400 with code `BadRequest` and a message
+  starting `1026`, so the CLI treats any 400 from this call as "no chat found". Verified live 2026-10-05
+  (handoff §3).
+- **F10 — write semantics.** `POST /me/events` is 201 and a repeated body + `transactionId` returns the
+  same event ID; `isOnlineMeeting: true` is **silently ignored** when `GET /me/calendar` →
+  `allowedOnlineMeetingProviders` lacks `teamsForBusiness` (201, no `joinUrl`); `PATCH /me/events/{id}` as a
+  non-organizer succeeds but changes only your own copy and the organizer's next update overwrites it;
+  accept/tentativelyAccept/decline/cancel are 202, but responding to your own event is a 400
+  `ErrorInvalidRequest` ("you're the meeting organizer") and `proposedNewTime` with `sendResponse:false` is
+  a 400 `ErrorInvalidParameter`; `cancel` as an attendee is `ErrorInvalidRequest`; `DELETE` is 204 and a
+  second delete is 404 `ErrorItemNotFound`. Declining moves the event to Deleted Items and deleting as
+  organizer sends cancellations (docs: `refs/graph/api-reference/v1.0/api/event-decline.md`,
+  `…/event-delete.md`). Verified live 2026-10-05 (handoff §3).
+- **Outlook throttling is not split out per endpoint** in `refs/graph/includes/throttling-outlook.md`; treat
+  the service-wide limits and the `Retry-After` rule in `refs/graph/concepts/throttling-limits.md` as the
+  only documented numbers for calendar calls.
 
 ## Keeping this file honest
 

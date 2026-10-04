@@ -61,6 +61,7 @@ token_store = "keyvault://kv-teams-cli/teams-bot-cache"   # or file:///data/team
   - `ChannelMessage.Edit` is **not** a substitute for `ChannelMessage.ReadWrite`. A tenant may have granted it, as the test tenant had, but the spike got 403 "requires ChannelMessage.ReadWrite" on PATCH and softDelete.
   - `Chat.ManageDeletion.All` (for `chat delete`) needs admin consent. Leave it out of every default set and request it incrementally when `chat delete` runs.
   - Do **not** add `offline_access`. MSAL drops any copies the caller passes and appends `openid`, `profile` and `offline_access` itself (`apps/internal/oauth/ops/accesstokens/accesstokens.go`).
+  - **Calendar scopes (`Calendars.Read`, `Calendars.Read.Shared`, `Calendars.ReadWrite`, `OnlineMeetings.Read`) are incremental and belong to no preset.** They are requested at first use, the way `Chat.ManageDeletion.All` is for `chat delete`. Adding one to a preset makes every existing login ask for it, which is the `AADSTS65001` failure commit f7bd612 fixed: consent is all-or-nothing per request, so a new scope in a preset breaks sign-in for every profile that has not consented to it yet. Production tenants may also need an admin to grant these before a user can consent (decision D3).
 - **`--read-only` narrows, it does not replace.** The read-only switch requests the configured scopes *minus* the write scopes the presets carry, and leaves an explicit `scopes` list exactly as configured. Replacing the list with the `read-only` preset — the first implementation — asked for scopes the app registration was never consented for (`Files.Read.All`, `User.ReadBasic.All`, `People.Read`), and because Entra consent is all-or-nothing per request the sign-in failed with AADSTS65001 before any read: `teams --read-only whoami` was broken on a profile with an explicit scope list while the same command worked without the flag. Narrowing may also only remove scopes the read-only preset does not carry itself, so it can never drop the last scope that makes a read work (`Chat.ReadBasic` is a read scope the preset happens not to list).
 - **Admin consent is the common failure, so design for it.** In delegated mode, `ChannelMessage.Read.All`, `ChannelMessage.ReadWrite` and `TeamMember.Read.All` (as well as `ChatMember.ReadWrite` and `Chat.ManageDeletion.All`) require admin consent (`concepts/permissions-reference.md`). That means even **read-only channel access needs an admin**.
   - **The spike showed it is worse than the docs suggest.** The test tenant's user-consent policy is `microsoft-user-default-low`, with **no** permissions classified as low, so users cannot self-consent even to "no admin consent" scopes ([docs/spike/phase1.md](docs/spike/phase1.md)). The three tiers (`chats`, `read-only`, `full`) are therefore **presets that tell an admin what to consent**, not a consent-free on-ramp. Keep them, because other tenants differ.
@@ -124,6 +125,12 @@ teams chat show <chat>                             teams chat delete <chat>
 teams chat create --with a@x,b@x [--topic]         teams chat add-member <chat> <user…>
 teams chat mark-read|mark-unread <chat>
 teams unread [--chats --mentions]                  # inbox view: unread chats + unread @mentions
+teams calendar list [--user <who>… --date <day> --days N --from <day> --to <day> --tz <IANA> --free-busy --chat --include-cancelled --limit --all]
+teams calendar show <event>                        teams calendar search <query> [--limit --all]
+teams calendar accept|tentative|decline <event> [--comment --no-notify] [--propose <start>/<end>]
+teams calendar create --subject <s> (--start <time> [--end|--duration] | --all-day --date <day> [--days N]) [--attendee <who>…] [--teams --location --body --dry-run]
+teams calendar update <event> [--subject --start --end|--duration --location --body --local-copy --dry-run]
+teams calendar cancel <event> [--comment --yes --dry-run]   teams calendar delete <event> [--yes --dry-run]
 teams search <query> [--from --to --in <channel|chat> --since --until --mentions-me --has-attachment --limit --page]
 teams mentions [--since 24h]
 teams post <channel|chat> [text|-] [--md(default)|--text|--html] [--mention user…] [--file path…] [--subject] [--importance high|urgent] [--dry-run]
@@ -358,15 +365,16 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
   - generated `docs/commands/*.md`, man pages and shell completion scripts from cobra (`mise run docs`);
   - a documentation site rendered from those two by `internal/testing/docsite` and published to GitHub Pages by `pages.yml`;
   - an "App registration" guide (`docs/guides/app-registration.md`, rendered on the site);
-  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault (Phase 7).
+  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault (Phase 8).
 
 ## Implementation phases
 
 Phase 0 is complete: the mirror, `refs/INDEX.md` and `refs/MANIFEST.md` are in the repo, and `scripts/fetch-refs.sh --verify` is the gate. Every phase below is a heading so work can be scoped to one phase at a time.
 
-**Current order (revised 2026-10-04):** 4 Write (done) → **5 Polish and v1.0** → 6 AI → 7 Bot/headless. The polish
-phase and the bot/headless phase traded places so that the user-facing v1.0 does not wait for the service-account
-store; see the note under Phase 5.
+**Current order (revised 2026-10-05):** 4 Write (done) → 5 Polish and v1.0 (done except the tag) →
+**6 Calendar** → 7 AI → 8 Bot/headless. Calendar jumped the queue ahead of the AI features because it is the
+user-facing answer to "what is my day", and it needs only one extra incremental scope instead of a provider
+and a consent flow; the AI and bot/headless phases keep their relative order. See the note under Phase 6.
 
 ### Phase 0: Local reference docs mirror (done)
 **Goal:** every agent or developer can `rg` the authoritative docs offline instead of guessing APIs or web-fetching mid-task.
@@ -379,7 +387,7 @@ store; see the note under Phase 5.
 - **Sources** (all public, markdown or source):
   | Topic | Repo | Sparse paths |
   |---|---|---|
-  | Graph API reference | `microsoftgraph/microsoft-graph-docs-contrib` | `api-reference/v1.0/api/{channel,chat,chatmessage,team,user,driveitem,search,teamwork}*`, `api-reference/v1.0/resources/{chat*,channel,team,user,driveitem,search*,teamwork*}`, `api-reference/v1.0/includes/permissions/*`, `concepts/{teams-*,search-concept-messages,search-concept-chat-messages,throttling*,paging,json-batching,permissions-reference,query-parameters,delta-query,people*}*`, `resources/{person,scoredemailaddress}*`, `includes/throttling-teams.md` |
+  | Graph API reference | `microsoftgraph/microsoft-graph-docs-contrib` | `api-reference/v1.0/api/{channel,chat,chatmessage,team,user,driveitem,search,teamwork,calendar,calendargroup,event,onlinemeeting}*`, `api-reference/v1.0/resources/{chat*,channel,team,user,driveitem,search*,teamwork*,calendar*,event*,onlinemeeting*,datetimetimezone*,schedule*,requestschedule*,attendee*,attendeebase*,attendeeavailability*,responsestatus*,location*,recipient*,freebusy*,workinghours*,timeslot*,timezone*}`, `api-reference/v1.0/includes/permissions/*`, `includes/permissions-notes/*`, `concepts/{teams-*,search-concept-messages,search-concept-chat-messages,search-concept-events,outlook*,throttling*,paging,json-batching,permissions-reference,query-parameters,delta-query,people*}*`, `resources/{person,scoredemailaddress}*`, `includes/throttling-{teams,outlook}.md`, `includes/outlook-*` |
   | Graph OpenAPI spec | `microsoftgraph/msgraph-metadata` | `openapi/v1.0/openapi.yaml` (the same file feeds the Layer 6 contract tests) |
   | Identity platform | `MicrosoftDocs/entra-docs` | `docs/identity-platform/` (device code, auth code + PKCE, refresh tokens, token lifetimes, public clients, AADSTS error codes, admin consent) |
   | Teams platform | `MicrosoftDocs/msteams-docs` | deep links (the URL formats for `internal/ref`, in `deep-link-teams.md`), message formatting, mentions, Graph/proactive-bot topics |
@@ -398,7 +406,7 @@ store; see the note under Phase 5.
   - the script runs cleanly twice in a row and leaves `refs/MANIFEST.md` unchanged — checkout sizes are deliberately not recorded, because `du` output drifts and would dirty a tracked file on every fetch;
   - every `refs/` path cited in `refs/INDEX.md` exists, so the index cannot rot away from the mirror it describes;
   - `refs/` stays a reasonable size (target < 500 MB);
-  - spot-check queries return hits: `rg -l "setReaction" refs/graph`, `rg "AADSTS65001" refs/entra`, `rg "hostedContents" refs/graph/api-reference`, `rg "l/message" refs/msteams`, plus the KQL scope terms, the People API and GoReleaser casks.
+  - spot-check queries return hits: `rg -l "setReaction" refs/graph`, `rg "AADSTS65001" refs/entra`, `rg "hostedContents" refs/graph/api-reference`, `rg "l/message" refs/msteams`, plus the KQL scope terms, the People API, the calendar endpoints (`calendar-list-calendarview.md`, `calendar-getschedule.md`, `search-concept-events.md`, `resources/event.md`, `includes/throttling-outlook.md`) and GoReleaser casks.
 
 ### Phase 1: Spike (done 2026-10-04, open items listed)
 The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwaway code in `spike/`, and are folded into this plan.
@@ -447,7 +455,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - **`cloud = "china"` needs `graph_base_url`.** The mirror documents the China authority but *not* the Graph service root (`refs/entra/docs/identity-platform/authentication-national-cloud.md:81` defers to a page that is not vendored), so the profile must supply it rather than us guessing a host.
 - **The token store's key is created only when tokens are stored.** A first `teams auth status` never touches the OS keychain: probing it on every command cost about a second on macOS, and asking a missing keychain to *create* an item pops a blocking dialog. `TEAMS_NO_KEYCHAIN=1` forces the plaintext file for containers and CI.
 - **`TEAMS_ACCESS_TOKEN` skips the scope pre-check** by design (PLAN.md:105), so the `scp`-based feature matrix is only consulted for real MSAL sessions.
-- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 7 (`token_store = "keyvault://…"` fails with a Phase 7 pointer); `mise run snapshot` downloads GoReleaser on first use (it is a task-scoped tool); the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
+- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 8 (`token_store = "keyvault://…"` fails with a Phase 8 pointer); `mise run snapshot` downloads GoReleaser on first use (it is a task-scoped tool); the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
 - **Three live-tenant items still need a human:** the redirect URI, admin consent, and an app-registration owner (the Phase 1 admin ticket).
 
 #### Revision 2026-10-04 (dev loop and releases)
@@ -606,7 +614,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
   seeded chat.
 - **Open for later phases:** `mise run smoke-live` still points at `internal/testing/live`, which does not exist
   yet — the write scenario PLAN.md describes (post → read → react → edit → delete → search, plus the bot-profile run
-  Phase 7 adds through Key Vault) is what should land there; a large upload's chunking is covered by a unit test but has never run
+  Phase 8 adds through Key Vault) is what should land there; a large upload's chunking is covered by a unit test but has never run
   against a live drive;
   a chat upload relies on the `Microsoft Teams Chat Files` folder existing (Teams creates it — the CLI does not);
   `edit` cannot add or remove attachments, which the delegated PATCH documents and the CLI therefore refuses;
@@ -621,15 +629,11 @@ Extra install channels are *not* part of v1.0: releases stay GitHub-only (archiv
 service-account store (Key Vault), `auth export/refresh` and the CI guide are for *operators*, and they are the
 slowest items to finish because they need a second identity, an Azure subscription and a runner. The polish work is
 already half done (docs are generated, man pages ship in the archives, the release pipeline is signed and attested)
-and it is what makes the CLI feel finished. So: ship v1.0 on the delegated-user story, then the AI features
-(Phase 6), and put the bot/headless work last (Phase 7) where it can be designed against a real deployment.
+and it is what makes the CLI feel finished. So: ship v1.0 on the delegated-user story, then calendar
+(Phase 6, added 2026-10-05), then the AI features (Phase 7), and put the bot/headless work last (Phase 8)
+where it can be designed against a real deployment.
 The swap moves no scope between phases; it changes the order, and it means v1.0 ships **before** the AI features —
 which stay opt-in and hidden until a provider is configured, so their absence is not a broken promise.
-
-### Phase 6: AI
-provider abstraction (Anthropic, OpenAI-compatible, Foundry with Entra), `summarize`, `draft`, `ask`, consent, `--show-prompt`;
-then sessions (`-c`/`--resume`, history retention, prompt caching), curated memory with confirm-to-save, `catchup` + watches,
-and the REPL. Ship the first four before the UX layer so the history format is designed against real usage.
 
 #### What Phase 5 actually shipped, and the decisions it forced
 - **Landed:** `teams version --check` (and the once-a-day notice), the shell completion scripts, and the documentation
@@ -662,7 +666,32 @@ and the REPL. Ship the first four before the UX layer so the history format is d
   `scripts/smoke.sh` against a release binary all pass, and the archive carries the binary, `LICENSE`, `README.md`,
   `man/` and `completions/`.
 
-### Phase 7: Bot/headless (was Phase 5; swapped 2026-10-04)
+### Phase 6: Calendar (6a read ships as v1.1.0, 6b write as v1.2.0)
+`teams calendar list|show|search` over `/me/calendarView`, `/users/{id}/calendarView` with a getSchedule
+free/busy fallback, and `/search/query` for events — then the write verbs (`create`, `update`, `respond`,
+`cancel`, `delete`) behind `Calendars.ReadWrite`. Days and ranges are always **local** (`--tz`, `--date`,
+`--days`, `--from`/`--to`), the window is widened by a day on each side and filtered client-side because
+all-day events are floating, and every event ID is stored as a 7-hex handle in the entity cache.
+No delta query and no local event store: one day is one or two `$select`ed pages (decision D2), and the
+Graph fakes have to reproduce the verified behaviour — a 1825-day `calendarView` cap, a 62-day
+`getSchedule` cap, `5016` per-schedule errors, and a 400 (not an empty list) from the online-meetings
+lookup. `plans/calendar.md` is the full spec; `refs/INDEX.md` §1 "Calendar" maps each endpoint to its
+mirrored page.
+
+**Why this moved ahead of the AI features.** Calendar is the user-facing feature users ask for next, and
+its whole cost is one incrementally requested scope plus a thin read layer over endpoints the mirror
+already documents. AI needs a provider, a key and a consent flow before it can do anything, so it stays
+opt-in and hidden until configured; bot/headless needs a second identity and an Azure subscription and
+remains last. The swap moves no scope between phases and changes no preset in `internal/config/scopes.go`:
+the calendar scopes are requested at first use (decision D3), so an existing login is never asked for
+them.
+
+### Phase 7: AI (was Phase 6; renumbered 2026-10-05)
+provider abstraction (Anthropic, OpenAI-compatible, Foundry with Entra), `summarize`, `draft`, `ask`, consent, `--show-prompt`;
+then sessions (`-c`/`--resume`, history retention, prompt caching), curated memory with confirm-to-save, `catchup` + watches,
+and the REPL. Ship the first four before the UX layer so the history format is designed against real usage.
+
+### Phase 8: Bot/headless (was Phase 5, then Phase 7; renumbered 2026-10-05)
 file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.
 Needed only for the service-account identity, which is why it now lands after v1.0.
 
@@ -690,7 +719,8 @@ We can't test against the real Graph API, so the plan is a **high-fidelity fake 
   - `$batch` with the documented maximum of 20 requests per call, and the rule that sub-request failures arrive inside a 200 response;
   - rejecting the query parameters Graph refuses, with the status codes observed in the spike: 400 for `$top` > 50 (messages, replies, chats) and for `$filter` on channel messages; 405 for `/chats/…/softDelete` and for a standalone hostedContents POST;
   - softDelete, set/unset reactions, upload sessions with `Content-Range` validation;
-  - `/search/query` over stored messages, paging by `from`/`size`, with a KQL subset: `from:`, `to:`, `sent>`/`sent>=`, `IsMentioned:`, `IsRead:`, `mentions:`, `hasAttachment:` and free text, no sorting, and `total` = count on the page — and `Prefer: include-unknown-enum-members` honored so `systemEventMessage` can be exercised.
+  - `/search/query` over stored messages, paging by `from`/`size`, with a KQL subset: `from:`, `to:`, `sent>`/`sent>=`, `IsMentioned:`, `IsRead:`, `mentions:`, `hasAttachment:` and free text, no sorting, and `total` = count on the page — and `Prefer: include-unknown-enum-members` honored so `systemEventMessage` can be exercised;
+  - **calendar (Phase 6), reproducing the live-verified quirks rather than the tidy version:** `calendarView` pages 10 by default with a 1825-day cap, `onlineMeeting` is omitted unless `isOnlineMeeting` is in `$select`, all-day events are matched as UTC midnight to midnight, `/users/{id}/calendarView` answers 403 `ErrorAccessDenied` / 404 `ErrorItemNotFound` for an unshared calendar and 404 `MailboxNotEnabledForRESTApi` / `ErrorInvalidUser` otherwise, getSchedule caps at 62 days and answers `value[i].error.responseCode == "5016"` with null `scheduleItems`, event search returns standard-base64 `hitId` values, the online-meetings `$filter` lookup answers 400 instead of an empty list, create dedupes on `transactionId`, and `isOnlineMeeting` is silently ignored on a mailbox without `teamsForBusiness`.
 - **Fault injection:** per route or per call, it can return 429 with `Retry-After`, 503, 401 with an expired token (once with a CAE claims challenge), 403 for missing scope, or malformed JSON.
 - **Request recorder:** tests can assert on the exact request bodies sent, for example the mention payload, the `hostedContents[]` inline image and the attachment reference shape.
 - **Stateful flows:** `post` then `read` then `react` then `edit` then `delete` then `search` can run as one test, the same flow as the live smoke test but deterministic.
@@ -737,7 +767,7 @@ We can't test against the real Graph API, so the plan is a **high-fidelity fake 
 
 ### Layer 6: Contract tests against Microsoft's OpenAPI spec (keeps the fakes honest)
 - **Source:** vendor a trimmed copy of the Graph v1.0 OpenAPI description from `microsoftgraph/msgraph-metadata`, containing only the paths we use. Trim by the `$ref` closure (the document is ~44 MB with ~11,500 path keys and zero external references), and keep the trim rule in the repo.
-- **Route list from the api-reference, not from the spec.** The spec declares operations that have no api-reference page — including `CreateHostedContents`, the very call the MCP gets wrong — so deriving the checked routes from spec operations would bless the bug. Generate the list from `refs/graph/api-reference/v1.0/api/`.
+- **Route list from the api-reference, not from the spec.** The spec declares operations that have no api-reference page — including `CreateHostedContents`, the very call the MCP gets wrong — so deriving the checked routes from spec operations would bless the bug. Generate the list from `refs/graph/api-reference/v1.0/api/`. The two sources also spell the same call differently: the spec has no `/me/calendarView`, no `/me/calendar/getSchedule` and no `/me/onlineMeetings`, so the Phase 6 read paths are covered by the api-reference check and fakegraph only, and `routes.go` says so where they are absent.
 - **Validation:** every request recorded by fakegraph in Layers 2 and 5, and every response it returns, is checked against the spec with `kin-openapi`, **except `$batch`**: the description contains no `/$batch` path or batch schema at all, so batch envelopes must be validated against a small local schema instead. Say that explicitly rather than claiming "every request".
 - **Expect and resolve the `@odata.type` conflict.** The spec marks `@odata.type` as required in thousands of schemas including `microsoft.graph.chatMessage`, while the docs say only `body` is mandatory and the code we port omits it. Either send `@odata.type` on writes or strip those `required` entries from the vendored copy — and record the divergence in the trim script. Without this, the first correct POST fails the contract test.
 - **Drift check:** a weekly scheduled CI job re-runs the validation against the **same pinned SHA** and opens an issue when a rerun disagrees, i.e. it detects tool/dependency drift. Do not download "the latest spec" in CI: that contradicts the pinned mirror and makes the suite go red on unrelated Microsoft-side churn. Upgrading the spec is a deliberate `scripts/fetch-refs.sh --update` bump reviewed like any other dependency.
