@@ -162,3 +162,8 @@ formatters:
         - github.com/floriscornel/teams-cli
   exclusions:
     generated: lax
+    # refs/ is a vendored mirror of other projects' sources and spike/ is
+    # throwaway Phase 1 code; neither belongs to this module.
+    paths:
+      - ^refs/
+      - ^spike/

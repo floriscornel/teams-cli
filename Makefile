@@ -27,6 +27,11 @@ COVERPROFILE  ?= coverage.out
 
 GO_SOURCES := $(shell find cmd internal -name '*.go' 2>/dev/null)
 
+# The lint/format scope: the repo's own packages. refs/ is a vendored mirror of
+# other projects' Go sources and spike/ is throwaway, so neither is ours to
+# format or lint.
+PKGS := ./cmd/... ./internal/...
+
 .PHONY: all
 all: check
 
@@ -51,11 +56,11 @@ tidy: ## go mod tidy, then fail if it changed anything
 
 .PHONY: fmt
 fmt: ## Format the tree (gofumpt + goimports through golangci-lint)
-	golangci-lint fmt ./...
+	golangci-lint fmt $(PKGS)
 
 .PHONY: fmt-check
 fmt-check: ## Fail when the tree is not formatted
-	golangci-lint fmt --diff ./...
+	golangci-lint fmt --diff $(PKGS)
 
 ## Verification
 
@@ -79,7 +84,7 @@ $(COVERPROFILE): $(GO_SOURCES)
 
 .PHONY: lint
 lint: ## golangci-lint (config in .golangci.yml)
-	golangci-lint run ./...
+	golangci-lint run $(PKGS)
 
 .PHONY: vuln
 vuln: ## govulncheck
