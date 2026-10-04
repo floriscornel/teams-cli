@@ -1,0 +1,19 @@
+# Local reference mirror (PLAN.md Phase 0). Only the curated index and the pinned
+# manifest are tracked; the checkouts themselves are disposable.
+/refs/*
+!/refs/INDEX.md
+!/refs/MANIFEST.md
+
+# Local tool caches (kept inside the workspace instead of the global Go cache)
+/.cache/
+
+# Build output
+/bin/
+/dist/
+/teams
+coverage.out
+*.test
+
+# Editor / OS noise
+.DS_Store
+.idea/
