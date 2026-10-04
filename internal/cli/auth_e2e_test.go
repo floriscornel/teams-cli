@@ -236,6 +236,32 @@ func TestLoginSurfacesAConsentFailure(t *testing.T) {
 	}
 }
 
+func TestLoginWithoutAnInjectedHTTPClientDoesNotPanic(t *testing.T) {
+	// Regression: `teams auth login` used to crash with a nil pointer
+	// dereference inside MSAL, because the App's unset AuthHTTPClient field
+	// reached MSAL as a typed-nil interface. The untrusted certificate of the
+	// fake authority now surfaces as an ordinary error instead.
+	env := newAuthEnv(t, []string{"User.Read"}, meHandler())
+	env.harness.app.SetHooks(Hooks{
+		ConfigPath:               env.harness.app.ConfigPath(),
+		Environ:                  nil,
+		GraphBaseURL:             env.graph.URL + "/v1.0",
+		AuthAuthority:            env.idp.Authority(),
+		DisableInstanceDiscovery: true,
+	})
+
+	err := env.harness.run("auth", "login", "--device")
+	if err == nil {
+		t.Fatal("login against a self-signed authority succeeded with the default client")
+	}
+	if strings.Contains(err.Error(), "nil pointer") {
+		t.Fatalf("login panicked through a nil HTTP client: %v", err)
+	}
+	if output.CodeOf(err) == output.CodeOK {
+		t.Errorf("exit code = %d, want a failure", output.CodeOf(err))
+	}
+}
+
 func TestScopePreCheckStopsBeforeGraph(t *testing.T) {
 	env := newAuthEnv(t, []string{"Chat.Read"}, meHandler())
 	h := env.harness

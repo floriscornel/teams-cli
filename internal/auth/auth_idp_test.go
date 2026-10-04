@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -350,6 +351,35 @@ func TestMetadataPathAndStoreAccessors(t *testing.T) {
 	// login tests above prove it is.
 	if got, want := env.client.Authority(), "https://login.microsoftonline.com/colorkrew.com"; got != want {
 		t.Errorf("Authority = %q, want %q", got, want)
+	}
+}
+
+func TestNilHTTPClientFallsBackToTheDefault(t *testing.T) {
+	// Regression: an unset *http.Client used to reach MSAL as a typed-nil
+	// interface value, and MSAL dereferenced it on the first discovery request,
+	// panicking before any sign-in could start. The fake's TLS certificate is
+	// not trusted by the default client, so the login must now fail with a TLS
+	// error instead of a nil pointer dereference.
+	env := newIDPEnv(t, []string{"User.Read"}, 3600)
+	opts := env.options
+	opts.HTTPClient = nil
+
+	client, err := New(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("New with a nil HTTP client: %v", err)
+	}
+	if _, err := client.Login(context.Background(), LoginOptions{Device: true}); err == nil {
+		t.Fatal("Login against a self-signed endpoint succeeded with the default client")
+	} else if strings.Contains(err.Error(), "nil pointer") {
+		t.Fatalf("Login panicked through a nil client: %v", err)
+	}
+
+	if got := msalHTTPClientFor(nil); got == nil {
+		t.Error("msalHTTPClientFor(nil) returned nil")
+	}
+	custom := &http.Client{}
+	if got := msalHTTPClientFor(custom); got != custom {
+		t.Error("msalHTTPClientFor dropped the caller's client")
 	}
 }
 

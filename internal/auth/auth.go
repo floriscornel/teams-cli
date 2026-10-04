@@ -51,8 +51,11 @@ type Options struct {
 	Clock clock.Clock
 	// Environ defaults to os.Environ(); TEAMS_ACCESS_TOKEN is read from it.
 	Environ []string
-	// HTTPClient is MSAL's HTTP client. Tests point it at fakeidp.
-	HTTPClient msalHTTPClient
+	// HTTPClient is MSAL's HTTP client. Tests point it at fakeidp. A nil value
+	// means "use the default client"; it must stay a concrete *http.Client so
+	// that an unset field is a real nil rather than a typed-nil interface, which
+	// MSAL would dereference on the first request (see msalHTTPClientFor).
+	HTTPClient *http.Client
 	// DisableInstanceDiscovery turns off the discovery round trip, which the
 	// fake identity provider needs (its host is not a trusted authority).
 	DisableInstanceDiscovery bool
@@ -69,13 +72,6 @@ type Options struct {
 	Store tokenstore.Store
 	// Keyring overrides the OS keychain (tests use an in-memory one).
 	Keyring tokenstore.Keyring
-}
-
-// msalHTTPClient is the interface MSAL accepts for WithHTTPClient
-// (refs/msal-go/apps/internal/oauth/ops/ops.go:29).
-type msalHTTPClient interface {
-	Do(*http.Request) (*http.Response, error)
-	CloseIdleConnections()
 }
 
 // Client is the profile's auth session.
@@ -150,9 +146,7 @@ func New(_ context.Context, opts Options) (*Client, error) {
 		// with RefreshOn at about 12 h (docs/spike/phase1.md:18).
 		public.WithClientCapabilities([]string{"cp1"}),
 	}
-	if opts.HTTPClient != nil {
-		msalOpts = append(msalOpts, public.WithHTTPClient(opts.HTTPClient))
-	}
+	msalOpts = append(msalOpts, public.WithHTTPClient(msalHTTPClientFor(opts.HTTPClient)))
 	if opts.DisableInstanceDiscovery {
 		msalOpts = append(msalOpts, public.WithInstanceDiscovery(false))
 	}
@@ -163,6 +157,21 @@ func New(_ context.Context, opts Options) (*Client, error) {
 	c.msal = pca
 	c.hasMSAL = true
 	return c, nil
+}
+
+// msalHTTPClientFor never returns a nil client.
+//
+// MSAL's comm.New (refs/msal-go/apps/internal/oauth/ops/internal/comm/comm.go:45-47)
+// keeps whatever it is given and calls Do on it, so a typed-nil
+// *http.Client — which is what an unset `Hooks.AuthHTTPClient` field becomes
+// when it is stored in an interface — panics with a nil pointer dereference on
+// the very first request, before any browser or device code is shown. Resolving
+// the default here removes the possibility instead of guarding each call site.
+func msalHTTPClientFor(hc *http.Client) *http.Client {
+	if hc == nil {
+		return http.DefaultClient
+	}
+	return hc
 }
 
 // Authority is the MSAL authority URL for the profile's tenant.
