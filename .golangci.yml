@@ -131,6 +131,14 @@ linters:
           - gosec
         path: _test\.go
         text: G101|G302|G304|G703|G705
+      # The dev tooling under internal/testing writes generated artifacts and
+      # test fixtures: 0755 directories and 0644 files are what `make docs` and
+      # `make refs-check` produce, and the literal client IDs there are fixtures,
+      # not credentials.
+      - linters:
+          - gosec
+        path: ^internal/testing/
+        text: G101|G301|G304|G306
       # internal/store owns the on-disk layout: every path it opens is built
       # from os.UserConfigDir/os.UserCacheDir plus a validated profile name
       # (store.ValidProfileName), never from user input.

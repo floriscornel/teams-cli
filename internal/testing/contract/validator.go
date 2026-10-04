@@ -206,7 +206,9 @@ func (v *Validator) ValidateResponse(method, path string, status int, body []byt
 
 // findRoute resolves a concrete request path to a spec operation.
 func (v *Validator) findRoute(method, path string) (*routers.Route, map[string]string, error) {
-	req, err := http.NewRequest(method, "https://graph.microsoft.com/v1.0"+path, nil)
+	// A context is required by the noctx linter; nothing here is network I/O,
+	// the request is only a structured path for the router.
+	req, err := http.NewRequestWithContext(context.Background(), method, "https://graph.microsoft.com/v1.0"+path, nil)
 	if err != nil {
 		return nil, nil, &Error{
 			Method: method, Path: path, Part: PartPath,
@@ -271,7 +273,7 @@ func newRequest(method, path string, query url.Values, body []byte, route *route
 	} else {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, target, reader)
+	req, err := http.NewRequestWithContext(context.Background(), method, target, reader)
 	if err != nil {
 		return nil, &Error{Method: method, Path: path, Part: PartPath, Value: target, Err: err}
 	}

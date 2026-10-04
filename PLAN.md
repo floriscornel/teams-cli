@@ -427,7 +427,7 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
   - consent for `User.ReadBasic.All`, `ChannelMessage.ReadWrite` and (optionally) `Files.Read.All`, `Files.ReadWrite.All` and `People.Read`;
   - an owner for the app registration.
 
-### Phase 2: Foundation
+### Phase 2: Foundation (done 2026-10-04, open items listed)
 - repo scaffold, cobra, config and profiles;
 - **test harness first:** fakeidp, a fakegraph skeleton, testscript wiring, the vendored OpenAPI subset with the contract validator, and CI gates;
 - `auth login/status/logout`, `whoami`;
@@ -435,6 +435,15 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - `internal/store` (config/cache/state paths, atomic writes, per-profile isolation) and `teams cache info|clear`, `teams doctor`;
 - **CI/CD from day one:** Makefile, `.golangci.yml`, `ci.yml` (lint, test matrix, coverage gate, govulncheck, snapshot build, smoke), `.goreleaser.yaml`, `release.yml`, Renovate, branch protection — ending in a signed, attested `v0.1.0-rc.1` pre-release with no package-manager publishing yet.
 - **Rule for every later phase:** each new command lands with its fakegraph routes, a testscript script and contract validation in the same PR.
+
+#### What Phase 2 actually shipped, and the decisions it forced
+- **Landed:** the command surface `auth login|status|logout`, `whoami`, `doctor`, `cache info|clear`, `profile list|use`, `config get|set|list`, `version`; the fake identity provider (`internal/testing/fakeidp`), the stateful fake Graph (`internal/testing/fakegraph`, 90%+ statement coverage), the contract layer (a 1.03 MB trimmed OpenAPI subset, 43 paths / 651 schemas, plus a 49-route list authored from the api-reference), `testscript` scripts, and the whole CI/release config.
+- **The scope presets are frozen** as `chats` / `read-only` / `full` (see `internal/config/scopes.go` for the exact lists and why `Files.Read.All`, `People.Read` and `ChatMessage.Send` are there while `ChannelMessage.Edit`, `ChatMember.ReadWrite` and `Chat.ManageDeletion.All` are not). `Scopes.AlternativeScopes` records the documented scopes we deliberately keep out of every preset.
+- **`cloud = "china"` needs `graph_base_url`.** The mirror documents the China authority but *not* the Graph service root (`refs/entra/docs/identity-platform/authentication-national-cloud.md:81` defers to a page that is not vendored), so the profile must supply it rather than us guessing a host.
+- **The token store's key is created only when tokens are stored.** A first `teams auth status` never touches the OS keychain: probing it on every command cost about a second on macOS, and asking a missing keychain to *create* an item pops a blocking dialog. `TEAMS_NO_KEYCHAIN=1` forces the plaintext file for containers and CI.
+- **`TEAMS_ACCESS_TOKEN` skips the scope pre-check** by design (PLAN.md:105), so the `scp`-based feature matrix is only consulted for real MSAL sessions.
+- **Gaps left for later phases, deliberately:** the Key Vault token store, `auth refresh` and `auth export` are Phase 5 (`token_store = "keyvault://…"` fails with a Phase 5 pointer); `make snapshot` needs GoReleaser installed; the contract layer cannot validate `$batch` (no spec path), the three route families the spec and the api-reference disagree about, or non-JSON/binary responses, which fakegraph asserts instead; and `go.mod` carries no `toolchain` line because `go mod tidy` strips one that duplicates the `go` directive.
+- **Three live-tenant items still need a human:** the redirect URI, admin consent, and an app-registration owner (the Phase 1 admin ticket).
 
 ### Phase 3: Read
 `team/channel/chat list` (plus `show`), `channel files`, `channel/chat/thread read`, `search`, `mentions`,

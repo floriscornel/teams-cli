@@ -59,7 +59,7 @@ func wrapRequestError(method, path string, query url.Values, body []byte, err er
 
 // wrapResponseError turns a kin-openapi error into a targeted *Error, phrased
 // for the response side.
-func wrapResponseError(method, path string, status int, body []byte, err error) error {
+func wrapResponseError(method, path string, status int, _ []byte, err error) error {
 	value := fmt.Sprintf("status %d", status)
 	if s := schemaErrorValue(err); s != "" {
 		value = fmt.Sprintf("status %d, %s", status, s)
@@ -134,18 +134,23 @@ func deepestSchemaError(err error) *openapi3.SchemaError {
 		if e == nil {
 			return
 		}
-		if se, ok := e.(*openapi3.SchemaError); ok {
-			if best == nil || len(se.JSONPointer()) > len(best.JSONPointer()) {
-				best = se
+		var schemaErr *openapi3.SchemaError
+		if errors.As(e, &schemaErr) {
+			if best == nil || len(schemaErr.JSONPointer()) > len(best.JSONPointer()) {
+				best = schemaErr
 			}
 		}
-		if multi, ok := e.(openapi3.MultiError); ok {
+		var multi openapi3.MultiError
+		if errors.As(e, &multi) {
 			for _, c := range multi {
 				walk(c)
 			}
 			return
 		}
-		switch u := e.(type) {
+		// Deliberate: the walker needs raw unwrapping (not errors.As) so it can
+		// descend into multi-errors and pick the deepest schema error, which is
+		// what makes a contract failure readable.
+		switch u := e.(type) { //nolint:errorlint // walker: unwraps the chain on purpose
 		case interface{ Unwrap() error }:
 			walk(u.Unwrap())
 		case interface{ Unwrap() []error }:
@@ -192,13 +197,13 @@ func jsonSnippet(v any) string {
 	return string(b)
 }
 
-func truncate(b []byte, max int) string {
+func truncate(b []byte, limit int) string {
 	s := strings.TrimSpace(string(b))
 	if s == "" {
 		return ""
 	}
-	if len(s) <= max {
+	if len(s) <= limit {
 		return s
 	}
-	return s[:max] + "…"
+	return s[:limit] + "…"
 }

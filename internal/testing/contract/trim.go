@@ -472,13 +472,13 @@ func aliasParameters(specPath, apiPath string) map[string]string {
 			continue
 		}
 		old := strings.Trim(s, "{}")
-		new := strings.Trim(a, "{}")
-		if prev, seen := conflict[old]; seen && prev != new {
+		renamed := strings.Trim(a, "{}")
+		if prev, seen := conflict[old]; seen && prev != renamed {
 			delete(out, old) // ambiguous: leave it alone
 			continue
 		}
-		conflict[old] = new
-		out[old] = new
+		conflict[old] = renamed
+		out[old] = renamed
 	}
 	return out
 }

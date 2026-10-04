@@ -81,11 +81,15 @@ func toString(v any) string { return fmt.Sprint(v) }
 
 func TestUnknownRouteReturnsGraphEnvelope(t *testing.T) {
 	srv := newTestServer(t)
-	resp, err := srv.Client().Get(srv.URL() + "/nope/at/all")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL()+"/nope/at/all", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
@@ -121,7 +125,7 @@ func TestWrongMethodReturns405(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
-			req, err := http.NewRequest(tc.method, srv.URL()+tc.path, nil)
+			req, err := http.NewRequestWithContext(context.Background(), tc.method, srv.URL()+tc.path, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +133,7 @@ func TestWrongMethodReturns405(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != MethodNotAllowed {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, MethodNotAllowed)
 			}

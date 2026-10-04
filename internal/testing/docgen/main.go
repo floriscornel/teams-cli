@@ -44,10 +44,10 @@ func main() {
 	if err := doc.GenManTree(root, header, manDir); err != nil {
 		fail(err)
 	}
-	fmt.Fprintf(os.Stdout, "wrote %s and %s\n", commandsDir, manDir)
+	_, _ = fmt.Fprintf(os.Stdout, "wrote %s and %s\n", commandsDir, manDir)
 }
 
 func fail(err error) {
-	fmt.Fprintf(os.Stderr, "docgen: %v\n", err)
+	_, _ = fmt.Fprintf(os.Stderr, "docgen: %v\n", err)
 	os.Exit(1)
 }

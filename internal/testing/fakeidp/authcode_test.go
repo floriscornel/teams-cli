@@ -198,7 +198,7 @@ func TestAuthorizationCodeRejected(t *testing.T) {
 	}{
 		{
 			name: "unknown code",
-			redeem: func(t *testing.T, srv *Server, code, redirectURI string) errorResponse {
+			redeem: func(t *testing.T, srv *Server, _, redirectURI string) errorResponse {
 				return authCodeError(t, srv, "ac-unknown", testVerifier, redirectURI)
 			},
 			wantDesc: "authorization code is invalid",
@@ -215,7 +215,7 @@ func TestAuthorizationCodeRejected(t *testing.T) {
 		},
 		{
 			name: "redirect_uri mismatch",
-			redeem: func(t *testing.T, srv *Server, code, redirectURI string) errorResponse {
+			redeem: func(t *testing.T, srv *Server, code, _ string) errorResponse {
 				return authCodeError(t, srv, code, testVerifier, "http://localhost:1")
 			},
 			wantDesc: "AADSTS50011",
@@ -286,12 +286,12 @@ func TestReturnAuthorizationCodeErrors(t *testing.T) {
 		},
 		{
 			name:    "unparseable authorization URL",
-			builder: func(t *testing.T, srv *Server) string { return "https://[::1" },
+			builder: func(_ *testing.T, _ *Server) string { return "https://[::1" },
 			wantErr: "parsing the authorization URL",
 		},
 		{
 			name: "redirect URI that refuses connections",
-			builder: func(t *testing.T, srv *Server) string {
+			builder: func(_ *testing.T, srv *Server) string {
 				closed := httptest.NewServer(http.NotFoundHandler())
 				redirectURI := closed.URL
 				closed.Close()
@@ -301,7 +301,7 @@ func TestReturnAuthorizationCodeErrors(t *testing.T) {
 		},
 		{
 			name: "redirect URI that fails",
-			builder: func(t *testing.T, srv *Server) string {
+			builder: func(_ *testing.T, srv *Server) string {
 				listener := newRedirectListener(t)
 				listener.mu.Lock()
 				listener.status = http.StatusInternalServerError

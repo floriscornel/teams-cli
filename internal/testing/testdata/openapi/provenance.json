@@ -24,7 +24,7 @@
   "trimRules": [
     "Keep only the paths listed in internal/testing/contract/routes.go, which is generated from the api-reference (refs/graph/api-reference/v1.0/api/) and not from the description. The description declares operations with no api-reference page (CreateHostedContents), so deriving routes from spec operations would bless a bug (refs/INDEX.md, PLAN.md Layer 6).",
     "Keep only the HTTP methods the CLI uses on those paths: GET, POST, PATCH, PUT, DELETE.",
-    "Match a route to a spec path by path shape (every {parameter} compared as a wildcard, because the two sources disagree on parameter names), preferring the candidate whose externalDocs URL names the api-reference page the route came from.",
+    "Match a route to a spec path by path shape (every {parameter} compared as a wildcard, because the two sources disagree on parameter names). The api-reference page check is the gate; the operation's externalDocs URL breaks ties, and a unique shape match is accepted when the operation links to a sibling page or has no externalDocs at all. More than one candidate is an error, never a guess.",
     "Re-key every retained path to the api-reference spelling (/groups/{group-id}/team/channels/... becomes /teams/{team-id}/channels/...) and rename its path-parameter declarations to match, so the trimmed copy matches what internal/graph sends.",
     "Keep the whole components/$ref closure reachable from the retained paths: schemas, responses, parameters and requestBodies.",
     "Drop components/examples entirely (they are illustrative only and are the single largest block in the source).",

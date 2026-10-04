@@ -113,7 +113,7 @@ func TestExpiredTokenWithCAEChallenge(t *testing.T) {
 		Clock:  newFakeClock(),
 		Faults: []Fault{ExpiredToken(http.MethodGet, "/me", 1, true)},
 	})
-	req, err := http.NewRequest(http.MethodGet, srv.URL()+"/me", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL()+"/me", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestExpiredTokenWithCAEChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}

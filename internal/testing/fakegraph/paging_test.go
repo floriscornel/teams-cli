@@ -303,8 +303,10 @@ func TestChannelRootOrderingFollowsChainActivity(t *testing.T) {
 		Me:    "u-me",
 		Users: []User{{ID: "u-me", DisplayName: "Me"}, {ID: "u-alice", DisplayName: "Alice"}},
 		Teams: []Team{{ID: "t", DisplayName: "T", Channels: []Channel{{ID: "c", DisplayName: "C", Messages: []Message{
-			{ID: "old-root-new-reply", AuthorID: "u-me", Body: "a", Created: tJan1, Modified: tJan1,
-				Replies: []Message{{ID: "r1", AuthorID: "u-alice", Body: "b", Created: tJan3}}},
+			{
+				ID: "old-root-new-reply", AuthorID: "u-me", Body: "a", Created: tJan1, Modified: tJan1,
+				Replies: []Message{{ID: "r1", AuthorID: "u-alice", Body: "b", Created: tJan3}},
+			},
 			{ID: "newer-root", AuthorID: "u-me", Body: "c", Created: tJan2, Modified: tJan2},
 		}}}}},
 	}

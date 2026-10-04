@@ -23,7 +23,7 @@ func rawPost(t *testing.T, srv *Server, path string, body any) (int, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequest(http.MethodPost, srv.URL()+path, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL()+path, strings.NewReader(string(payload)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func rawPost(t *testing.T, srv *Server, path string, body any) (int, []byte) {
 	if err != nil {
 		t.Fatalf("POST %s: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -264,13 +264,13 @@ func TestBatchSubRequestsAreRecorded(t *testing.T) {
 		if rec.Path != "/$batch" && rec.Path != "/me" {
 			continue
 		}
-		switch {
-		case rec.Path == "/$batch":
+		switch rec.Path {
+		case "/$batch":
 			outer++
 			if rec.Sub {
 				t.Error("the outer $batch request was marked as a sub-request")
 			}
-		case rec.Path == "/me":
+		case "/me":
 			sub++
 			if !rec.Sub {
 				t.Error("a $batch sub-request was not marked as such")

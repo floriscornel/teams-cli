@@ -57,13 +57,17 @@ func searchFixture() Model {
 				{ID: "s-1b", AuthorID: "u-me", Body: "<p>hi</p>", Created: tJan2.Add(12 * time.Hour)},
 			}},
 			{ID: "s-attach-chat", ChatType: ChatTypeGroup, Members: members("u-me", "u-alice"), Messages: []Message{
-				{ID: "s-att", AuthorID: "u-alice", Body: "<p>hello with file</p>", Created: tJan3.Add(9 * time.Hour),
-					Attachments: []Attachment{{ID: "att-1", Name: "spec.pdf", ContentType: "reference", ContentURL: "https://contoso.example/spec.pdf"}}},
-				{ID: "s-mention", AuthorID: "u-alice", Body: `<p>hey <at id="0">Me Myself</at> and <at id="1">Guid User</at></p>`, Created: tJan2.Add(10 * time.Hour),
+				{
+					ID: "s-att", AuthorID: "u-alice", Body: "<p>hello with file</p>", Created: tJan3.Add(9 * time.Hour),
+					Attachments: []Attachment{{ID: "att-1", Name: "spec.pdf", ContentType: "reference", ContentURL: "https://contoso.example/spec.pdf"}},
+				},
+				{
+					ID: "s-mention", AuthorID: "u-alice", Body: `<p>hey <at id="0">Me Myself</at> and <at id="1">Guid User</at></p>`, Created: tJan2.Add(10 * time.Hour),
 					Mentions: []Mention{
 						{ID: 0, Text: "Me Myself", UserID: "u-me", UserDisplayName: "Me Myself"},
 						{ID: 1, Text: "Guid User", UserID: guidUserID, UserDisplayName: "Guid User"},
-					}},
+					},
+				},
 			}},
 		},
 	}

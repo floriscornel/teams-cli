@@ -100,7 +100,14 @@ func TestNewServerCanBeClosedDirectly(t *testing.T) {
 	before := srv.URL()
 	srv.Close()
 	// The listener is gone: the client cannot reach the URL any more.
-	if _, err := srv.HTTPClient().Get(before); err == nil {
+	// A context is required by the noctx linter even in a test helper.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, before, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.HTTPClient().Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
 		t.Error("the server still answered after Close")
 	}
 }
@@ -227,7 +234,7 @@ func TestRouting(t *testing.T) {
 			if !strings.HasPrefix(endpoint, "http") {
 				endpoint = srv.URL() + endpoint
 			}
-			resp := doRaw(t, srv.HTTPClient(), test.method, endpoint, "")
+			resp := doRaw(t, srv.HTTPClient(), test.method, endpoint, "") //nolint:bodyclose // doRaw drained and closed the body
 			if resp.StatusCode != test.wantStatus {
 				t.Errorf("%s %s answered HTTP %d, want %d", test.method, endpoint, resp.StatusCode, test.wantStatus)
 			}
@@ -253,7 +260,7 @@ func TestMalformedRequestBody(t *testing.T) {
 		"device-code endpoint": srv.Endpoints().DeviceCode,
 	} {
 		t.Run(name, func(t *testing.T) {
-			resp := doRaw(t, srv.HTTPClient(), http.MethodPost, endpoint, "grant_type=%zz")
+			resp := doRaw(t, srv.HTTPClient(), http.MethodPost, endpoint, "grant_type=%zz") //nolint:bodyclose // doRaw drained and closed the body
 			if resp.StatusCode != http.StatusBadRequest {
 				t.Errorf("a malformed form body answered HTTP %d, want 400", resp.StatusCode)
 			}
@@ -423,7 +430,7 @@ func TestDeviceCodeGrantFailure(t *testing.T) {
 	}{
 		{
 			name: "unknown device code",
-			mutate: func(t *testing.T, srv *Server, dc *deviceCodeResponse) {
+			mutate: func(_ *testing.T, _ *Server, dc *deviceCodeResponse) {
 				dc.DeviceCode = "dc-does-not-exist"
 			},
 			want: []string{"bad_verification_code"},

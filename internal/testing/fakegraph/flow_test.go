@@ -67,8 +67,10 @@ func TestWriteFlowPostReadReactEditDeleteSearch(t *testing.T) {
 	}
 
 	// --- react ---
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/setReaction",
-		Body: map[string]string{"reactionType": "👍"}}); err != nil {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/setReaction",
+		Body: map[string]string{"reactionType": "👍"},
+	}); err != nil {
 		t.Fatalf("setReaction: %v", err)
 	}
 	fetched = getMessage(t, c, channelMsgs+"/"+created.ID)
@@ -78,8 +80,10 @@ func TestWriteFlowPostReadReactEditDeleteSearch(t *testing.T) {
 	if fetched.Reactions[0].User == nil || fetched.Reactions[0].User.ID != "u-me" {
 		t.Fatalf("reaction user = %+v", fetched.Reactions[0].User)
 	}
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/unsetReaction",
-		Body: map[string]string{"reactionType": "👍"}}); err != nil {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/unsetReaction",
+		Body: map[string]string{"reactionType": "👍"},
+	}); err != nil {
 		t.Fatalf("unsetReaction: %v", err)
 	}
 	if got := getMessage(t, c, channelMsgs+"/"+created.ID); len(got.Reactions) != 0 {
@@ -87,8 +91,10 @@ func TestWriteFlowPostReadReactEditDeleteSearch(t *testing.T) {
 	}
 
 	// --- edit ---
-	patch, err := c.Do(ctx, graph.Request{Method: http.MethodPatch, Path: channelMsgs + "/" + created.ID,
-		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>flowmarker edited</p>"}}})
+	patch, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPatch, Path: channelMsgs + "/" + created.ID,
+		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>flowmarker edited</p>"}},
+	})
 	if err != nil {
 		t.Fatalf("patch: %v", err)
 	}
@@ -107,8 +113,10 @@ func TestWriteFlowPostReadReactEditDeleteSearch(t *testing.T) {
 	}
 
 	// --- reply ---
-	replyResp, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/replies",
-		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>a reply</p>"}}})
+	replyResp, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: channelMsgs + "/" + created.ID + "/replies",
+		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>a reply</p>"}},
+	})
 	if err != nil {
 		t.Fatalf("reply: %v", err)
 	}
@@ -165,8 +173,10 @@ func TestWriteFlowChatReadStateAndQuoteReply(t *testing.T) {
 	const chatMsgs = "/chats/chat-1on1/messages"
 
 	// --- post ---
-	resp, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: chatMsgs,
-		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>chat flowmarker</p>"}}})
+	resp, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: chatMsgs,
+		Body: map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>chat flowmarker</p>"}},
+	})
 	if err != nil {
 		t.Fatalf("post chat message: %v", err)
 	}
@@ -185,15 +195,19 @@ func TestWriteFlowChatReadStateAndQuoteReply(t *testing.T) {
 	}
 
 	// --- mark unread then read, checking viewpoint each time ---
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: "/chats/chat-1on1/markChatUnreadForUser",
-		Body: map[string]any{"user": map[string]string{"id": "u-me"}}}); err != nil {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: "/chats/chat-1on1/markChatUnreadForUser",
+		Body: map[string]any{"user": map[string]string{"id": "u-me"}},
+	}); err != nil {
 		t.Fatalf("markChatUnreadForUser: %v", err)
 	}
 	if vp := getChat(t, c).Viewpoint; vp == nil || vp.LastMessageReadDateTime != nil {
 		t.Fatalf("viewpoint after mark-unread = %+v, want a null lastMessageReadDateTime", vp)
 	}
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: "/chats/chat-1on1/markChatReadForUser",
-		Body: map[string]any{"user": map[string]string{"id": "u-me"}}}); err != nil {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: "/chats/chat-1on1/markChatReadForUser",
+		Body: map[string]any{"user": map[string]string{"id": "u-me"}},
+	}); err != nil {
 		t.Fatalf("markChatReadForUser: %v", err)
 	}
 	vp := getChat(t, c).Viewpoint
@@ -220,13 +234,15 @@ func TestWriteFlowChatReadStateAndQuoteReply(t *testing.T) {
 	}
 
 	// --- quote reply ---
-	quote, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: "/chats/chat-1on1/messages/replyWithQuote",
+	quote, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: "/chats/chat-1on1/messages/replyWithQuote",
 		Body: map[string]any{
 			"messageIds": []string{created.ID},
 			"replyMessage": map[string]any{
 				"body": map[string]string{"contentType": "html", "content": "<p>quoting you</p>"},
 			},
-		}})
+		},
+	})
 	if err != nil {
 		t.Fatalf("replyWithQuote: %v", err)
 	}
@@ -246,14 +262,18 @@ func TestWriteFlowChatReadStateAndQuoteReply(t *testing.T) {
 	for i := range tooMany {
 		tooMany[i] = created.ID
 	}
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPost, Path: "/chats/chat-1on1/messages/replyWithQuote",
-		Body: map[string]any{"messageIds": tooMany, "replyMessage": map[string]any{"body": map[string]string{"content": "x"}}}}); errStatus(err) != 400 {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPost, Path: "/chats/chat-1on1/messages/replyWithQuote",
+		Body: map[string]any{"messageIds": tooMany, "replyMessage": map[string]any{"body": map[string]string{"content": "x"}}},
+	}); errStatus(err) != 400 {
 		t.Fatalf("11 quoted messages: err = %v, want 400", err)
 	}
 
 	// --- edit and delete the chat message through the chat path ---
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPatch, Path: chatMsgs + "/" + created.ID,
-		Body: map[string]any{"body": map[string]string{"content": "<p>chat flowmarker edited</p>"}}}); err != nil {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPatch, Path: chatMsgs + "/" + created.ID,
+		Body: map[string]any{"body": map[string]string{"content": "<p>chat flowmarker edited</p>"}},
+	}); err != nil {
 		t.Fatalf("patch chat message: %v", err)
 	}
 	if got := getMessage(t, c, chatMsgs+"/"+created.ID); !strings.Contains(got.Body.Content, "edited") {

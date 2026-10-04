@@ -120,7 +120,7 @@ func (s *Server) execSubRequest(parent *handlerCtx, item batchRequestItemWire) b
 	if len(item.Body) > 0 && !bytes.Equal(bytes.TrimSpace(item.Body), []byte("null")) {
 		body = item.Body
 	}
-	req := httptest.NewRequest(method, s.origin+rel, bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(parent.r.Context(), method, s.origin+rel, bytes.NewReader(body))
 	for k, v := range item.Headers {
 		req.Header.Set(k, v)
 	}

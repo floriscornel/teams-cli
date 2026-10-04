@@ -23,8 +23,10 @@ func TestPathShape(t *testing.T) {
 		{"/drives/{drive-id}/items/{driveItem-id}/content", "/drives/{}/items/{}/content"},
 		{"/search/query", "/search/query"},
 		{"/me/chats?$top=50", "/me/chats"},
-		{"/chats/{chat-id}/messages/{chatMessage-id}/hostedContents/{hosted-content-id}/$value",
-			"/chats/{}/messages/{}/hostedContents/{}/$value"},
+		{
+			"/chats/{chat-id}/messages/{chatMessage-id}/hostedContents/{hosted-content-id}/$value",
+			"/chats/{}/messages/{}/hostedContents/{}/$value",
+		},
 	}
 	for _, tc := range tests {
 		if got := pathShape(tc.in); got != tc.want {
@@ -232,8 +234,10 @@ func TestFindOperationRejectsUnknownRoute(t *testing.T) {
 // entry, drops an emptied required list, and leaves everything else alone.
 func TestStripODataTypeRequired(t *testing.T) {
 	schema := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-		scalar("required"), {Kind: yaml.SequenceNode, Content: []*yaml.Node{scalar(odataTypeKey)}},
-		scalar("properties"), {Kind: yaml.MappingNode, Content: []*yaml.Node{
+		scalar("required"),
+		{Kind: yaml.SequenceNode, Content: []*yaml.Node{scalar(odataTypeKey)}},
+		scalar("properties"),
+		{Kind: yaml.MappingNode, Content: []*yaml.Node{
 			scalar(odataTypeKey), {Kind: yaml.MappingNode, Content: []*yaml.Node{scalar("type"), scalar("string")}},
 		}},
 	}}
@@ -274,7 +278,8 @@ func TestPruneDiscriminatorMappings(t *testing.T) {
 	keep := map[string]map[string]bool{"schemas": {"kept": true}}
 	disc := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
 		scalar("propertyName"), scalar("@odata.type"),
-		scalar("mapping"), {Kind: yaml.MappingNode, Content: []*yaml.Node{
+		scalar("mapping"),
+		{Kind: yaml.MappingNode, Content: []*yaml.Node{
 			scalar("#microsoft.graph.kept"), scalar("#/components/schemas/kept"),
 			scalar("#microsoft.graph.gone"), scalar("#/components/schemas/gone"),
 		}},

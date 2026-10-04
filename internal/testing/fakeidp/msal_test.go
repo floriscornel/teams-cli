@@ -385,7 +385,7 @@ func TestMSALRejectsGETCallback(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusMethodNotAllowed {
 			return fmt.Errorf("the listener answered HTTP %d for a GET, want 405", resp.StatusCode)
 		}

@@ -144,7 +144,7 @@ func TestRequireToken(t *testing.T) {
 	srv := New(t, Options{Model: testModel(), Clock: newFakeClock(), RequireToken: true})
 
 	// No Authorization header at all.
-	req, err := http.NewRequest(http.MethodGet, srv.URL()+"/me", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL()+"/me", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestRequireToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}

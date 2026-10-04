@@ -28,31 +28,31 @@ func main() {
 
 	generated, err := contract.Generate(*root)
 	if err != nil {
-		os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 
 	switch {
 	case *list:
 		if _, err := os.Stdout.Write(generated.Routes); err != nil {
-			os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
 			os.Exit(1)
 		}
 	case *stdout:
 		if _, err := os.Stdout.Write(contract.Spec(generated)); err != nil {
-			os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
 			os.Exit(1)
 		}
 	default:
 		written, err := contract.WriteArtifacts(*root, generated)
 		if err != nil {
-			os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
 			os.Exit(1)
 		}
 		for _, path := range written {
 			info, err := os.Stat(path)
 			if err != nil {
-				os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("gen-contract: " + err.Error() + "\n")
 				os.Exit(1)
 			}
 			rel, err := filepath.Rel(*root, path)

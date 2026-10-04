@@ -103,19 +103,19 @@ func Slow(method, path string, call int, delay time.Duration) Fault {
 
 func (f Fault) validate() error {
 	if f.Call < 0 {
-		return fmt.Errorf("Call must not be negative, got %d", f.Call)
+		return fmt.Errorf("call must not be negative, got %d", f.Call)
 	}
 	if f.Delay < 0 {
-		return fmt.Errorf("Delay must not be negative, got %s", f.Delay)
+		return fmt.Errorf("delay must not be negative, got %s", f.Delay)
 	}
 	if f.RetryAfter < 0 {
-		return fmt.Errorf("RetryAfter must not be negative, got %d", f.RetryAfter)
+		return fmt.Errorf("retryAfter must not be negative, got %d", f.RetryAfter)
 	}
 	if f.Status != 0 && (f.Status < 100 || f.Status > 599) {
-		return fmt.Errorf("Status %d is not a valid HTTP status", f.Status)
+		return fmt.Errorf("status %d is not a valid HTTP status", f.Status)
 	}
 	if f.Status == 0 && !f.MalformedJSON && f.Body != "" {
-		return fmt.Errorf("Body needs a Status or MalformedJSON")
+		return fmt.Errorf("body needs a status or MalformedJSON")
 	}
 	return nil
 }

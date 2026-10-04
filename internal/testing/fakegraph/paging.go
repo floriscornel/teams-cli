@@ -43,11 +43,11 @@ type pageParams struct {
 	Offset int
 }
 
-// parsePage resolves $top and the paging offset. def and max are the
+// parsePage resolves $top and the paging offset. def and limit are the
 // collection's documented defaults and caps. A $top over the cap is a 400, not
 // a clamp: the spike saw 400 for $top=51
 // (docs/spike/phase1.md:52), and silently clamping would hide a client bug.
-func parsePage(q url.Values, def, max int) (pageParams, *apiError) {
+func parsePage(q url.Values, def, limit int) (pageParams, *apiError) {
 	p := pageParams{Top: def}
 	if raw := q.Get("$top"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -57,8 +57,8 @@ func parsePage(q url.Values, def, max int) (pageParams, *apiError) {
 		if n < 1 {
 			return p, badRequestf("The '$top' value must be at least 1, got %d.", n)
 		}
-		if n > max {
-			return p, badRequestf("The '$top' value is greater than the maximum allowed value. The maximum allowed value is %d.", max)
+		if n > limit {
+			return p, badRequestf("The '$top' value is greater than the maximum allowed value. The maximum allowed value is %d.", limit)
 		}
 		p.Top = n
 	}

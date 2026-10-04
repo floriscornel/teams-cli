@@ -681,11 +681,11 @@ func plainText(html string) string {
 // property).
 func summaryOf(body string) string {
 	text := plainText(body)
-	const max = 120
-	if len(text) <= max {
+	const maxSummary = 120
+	if len(text) <= maxSummary {
 		return text
 	}
-	return text[:max]
+	return text[:maxSummary]
 }
 
 func firstNonEmpty(values ...string) string {

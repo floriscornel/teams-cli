@@ -94,7 +94,7 @@ func analyze(profile string, excludes []string) (total, covered int, perFile map
 	if err != nil {
 		return 0, 0, nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	perFile = map[string]fileStat{}
 	scanner := bufio.NewScanner(f)

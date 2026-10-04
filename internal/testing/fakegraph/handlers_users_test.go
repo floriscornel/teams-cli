@@ -587,8 +587,10 @@ func TestUploadSessionFlow(t *testing.T) {
 		t.Fatalf("uploaded file missing from the folder: %+v", children.Value)
 	}
 	// An unknown session is a 404.
-	if _, err := c.Do(ctx, graph.Request{Method: http.MethodPut, Path: "/_upload/nope", Body: json.RawMessage("x"),
-		Header: http.Header{"Content-Range": []string{"bytes 0-0/1"}}}); errStatus(err) != 404 {
+	if _, err := c.Do(ctx, graph.Request{
+		Method: http.MethodPut, Path: "/_upload/nope", Body: json.RawMessage("x"),
+		Header: http.Header{"Content-Range": []string{"bytes 0-0/1"}},
+	}); errStatus(err) != 404 {
 		t.Fatalf("unknown session: err = %v, want 404", err)
 	}
 }

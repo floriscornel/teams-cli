@@ -72,7 +72,7 @@ test-short: ## Tests without the race detector (fast local loop)
 
 .PHONY: cover
 cover: $(COVERPROFILE) ## Enforce the coverage floor on non-excluded code
-	$(GO) run ./internal/testing/coveragecheck -profile $(COVERPROFILE) -min $(COVERAGE_MIN) -exclude $(COVER_EXCLUDE)
+	$(GO) run ./internal/testing/coveragecheck -profile $(COVERPROFILE) -min $(COVERAGE_MIN) -exclude '$(COVER_EXCLUDE)' 
 
 $(COVERPROFILE): $(GO_SOURCES)
 	$(GO) test -race -covermode=atomic -coverprofile=$(COVERPROFILE) ./...

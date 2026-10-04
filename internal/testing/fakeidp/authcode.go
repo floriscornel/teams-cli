@@ -1,6 +1,7 @@
 package fakeidp
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -54,6 +55,16 @@ type AuthorizationRequest struct {
 	Claims    string
 	// Raw is the whole query string, for parameters this struct does not name.
 	Raw url.Values
+}
+
+// postFormContext is PostForm with a context, which the noctx linter requires.
+func postFormContext(ctx context.Context, url string, form url.Values) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return http.DefaultClient.Do(req)
 }
 
 // FakeBrowser returns a browser hook for public.WithOpenURL
@@ -118,11 +129,11 @@ func (s *Server) ReturnAuthorizationCode(authURL string) error {
 		form.Set("code", code)
 	}
 
-	resp, err := s.HTTPClient().PostForm(req.RedirectURI, form)
+	resp, err := postFormContext(context.Background(), req.RedirectURI, form)
 	if err != nil {
 		return fmt.Errorf("fakeidp: posting the authorization response to %s: %w", req.RedirectURI, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("fakeidp: the redirect URI %s answered HTTP %d: %s",

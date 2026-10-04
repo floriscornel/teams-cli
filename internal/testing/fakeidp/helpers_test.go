@@ -1,6 +1,7 @@
 package fakeidp
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -62,7 +63,7 @@ func do(t *testing.T, client *http.Client, method, endpoint string, body io.Read
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("reading the body of the response to %s %s: %v", method, endpoint, err)
@@ -96,7 +97,18 @@ func doRaw(t *testing.T, client *http.Client, method, endpoint, body string) *ht
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, endpoint, err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	// Read and close the real body here and hand the caller a re-readable copy:
+	// a test that returns early still cannot leak the connection.
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		_ = resp.Body.Close()
+		t.Fatalf("%s %s: read body: %v", method, endpoint, err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("%s %s: close body: %v", method, endpoint, err)
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(data))
+	resp.ContentLength = int64(len(data))
 	return resp
 }
 
