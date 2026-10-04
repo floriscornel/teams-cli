@@ -1,0 +1,9 @@
+# Read-only mode blocks write commands before any network call, both through the
+# flag and through the documented environment variable.
+! exec teams --read-only auth login
+stderr 'read-only'
+stderr 'write command'
+
+env TEAMS_READ_ONLY=1
+! exec teams auth logout
+stderr 'read-only'

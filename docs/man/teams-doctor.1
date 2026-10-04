@@ -1,0 +1,61 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-doctor - Check the config, token store, scopes, clock and Graph reachability
+
+
+.SH SYNOPSIS
+\fBteams doctor [flags]\fP
+
+
+.SH DESCRIPTION
+Diagnose the local setup and print the fix for every problem.
+
+.PP
+doctor checks the config file, the token store (including keychain
+reachability), the scopes the current token carries against the feature
+matrix, the clock skew against Graph's own clock, and Graph reachability.
+It never makes a write call; --offline skips the network checks entirely.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for doctor
+
+.PP
+\fB--offline\fP[=false]
+	skip the checks that need the network
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP

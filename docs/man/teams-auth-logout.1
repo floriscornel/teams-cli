@@ -1,0 +1,64 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-auth-logout - Sign out and delete the cached tokens
+
+
+.SH SYNOPSIS
+\fBteams auth logout [flags]\fP
+
+
+.SH DESCRIPTION
+Remove the cached account and delete the token store for the profile.
+
+.PP
+With --all, sign out of every configured profile: this is the "forget
+everything" command, and it is the only one that deletes token material.
+\fBteams cache clear\fR never does.
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	sign out of every configured profile
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for logout
+
+.PP
+\fB--yes\fP[=false]
+	do not ask for confirmation
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-auth(1)\fP

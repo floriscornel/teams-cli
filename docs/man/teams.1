@@ -1,0 +1,55 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams - Search, read and post in Microsoft Teams from the terminal
+
+
+.SH SYNOPSIS
+\fBteams [flags]\fP
+
+
+.SH DESCRIPTION
+teams is a standalone CLI for Microsoft Teams.
+
+.PP
+It signs in as you (or as a service account) with delegated Microsoft Graph
+permissions, keeps the token cache encrypted, and never prompts in
+non-interactive mode.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for teams
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-auth(1)\fP, \fBteams-cache(1)\fP, \fBteams-config(1)\fP, \fBteams-doctor(1)\fP, \fBteams-profile(1)\fP, \fBteams-version(1)\fP, \fBteams-whoami(1)\fP

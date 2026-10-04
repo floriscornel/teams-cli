@@ -1,0 +1,45 @@
+# cache info lists the paths; cache clear removes rebuildable data only and
+# never touches the token cache or the config file.
+mkdir -p state/me cache/me state/me/ai/sessions
+cp seed-token state/me/token.bin
+cp seed-entities cache/me/entities.json
+cp seed-session state/me/ai/sessions/s1.jsonl
+cp seed-memory state/me/ai/memory.toml
+cp seed-alias state/me/aliases.toml
+
+exec teams cache info
+stdout 'entity cache'
+stdout 'token cache'
+stdout 'KIND'
+
+exec teams cache clear
+stdout 'cleared'
+! exists cache/me/entities.json
+exists state/me/token.bin
+
+# Deleting state needs confirmation, and non-interactive mode refuses instead.
+! exec teams cache clear --ai
+stderr '\-\-yes'
+exists state/me/token.bin
+exists state/me/ai/sessions/s1.jsonl
+
+exec teams cache clear --ai --yes
+stdout 'cleared'
+! exists state/me/ai
+exists state/me/token.bin
+
+# --all also clears user state, and still keeps the secrets.
+exec teams cache clear --all --yes
+stdout 'cleared'
+exists state/me/token.bin
+
+-- seed-token --
+ciphertext-for-a-test
+-- seed-entities --
+{"names":{}}
+-- seed-session --
+{"version":1}
+-- seed-memory --
+facts = []
+-- seed-alias --
+boss = "alice@example.com"

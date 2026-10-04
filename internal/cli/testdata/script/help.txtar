@@ -1,0 +1,15 @@
+# Help lists the Phase 2 command surface, and cobra rejections exit 2 (usage).
+exec teams --help
+stdout 'auth'
+stdout 'cache'
+stdout 'config'
+stdout 'doctor'
+stdout 'profile'
+stdout 'whoami'
+stdout '--read-only'
+
+! exec teams --nope
+stderr 'unknown flag'
+
+! exec teams no-such-command
+stderr 'unknown command'

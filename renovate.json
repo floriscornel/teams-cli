@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency dashboard",
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 4,
+  "prHourlyLimit": 2,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"],
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "Go modules move as one graph; a grouped PR keeps go.sum coherent and matches 'one dependency bump per week'.",
+      "matchManagers": ["gomod"],
+      "groupName": "go modules",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Actions are pinned by full commit SHA with the release tag in a trailing comment (PLAN.md 'Workflows'); Renovate must move the SHA and the comment together.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "pinDigests": true,
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Tool versions pinned inside .github/workflows via '# renovate:' comments (see customManagers below).",
+      "matchManagers": ["custom.regex"],
+      "groupName": "ci tool versions",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Security fixes are not held back by the weekly window.",
+      "matchCategories": ["security"],
+      "schedule": ["at any time"],
+      "prPriority": 10
+    },
+    {
+      "description": "The Go directive in go.mod is pinned deliberately (PLAN.md 'Toolchain and local workflow'); bumping it is a reviewed change, not a routine PR.",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned tool versions in .github/workflows, annotated with a '# renovate: datasource=... depName=...' comment on the line above the value.",
+      "managerFilePatterns": ["/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)[ \\t]*\\n[ \\t]*[\\w.-]+:[ \\t]*['\"]?(?<currentValue>v?[0-9][0-9A-Za-z.+_-]*)"
+      ]
+    }
+  ]
+}

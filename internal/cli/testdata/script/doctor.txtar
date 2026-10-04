@@ -1,0 +1,18 @@
+# doctor prints a row per check and refuses to run blind: without an account the
+# sign-in check fails and its fix is printed.
+! exec teams doctor --offline
+stdout 'config file'
+stdout 'profile'
+stdout 'sign-in'
+stderr 'fix \(sign-in\)'
+stderr 'auth login'
+
+# With an access token the local checks pass and the network ones are skipped.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBDaGF0LlJlYWQiLCJleHAiOjE4OTM0NTYwMDB9.
+exec teams doctor --offline
+stdout 'features available'
+stdout 'whoami'
+stdout 'skipped \(--offline\)'
+
+exec teams doctor --offline --json
+stdout '"checks":'

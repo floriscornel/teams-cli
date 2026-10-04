@@ -1,0 +1,15 @@
+# TEAMS_ACCESS_TOKEN is the escape hatch: a decoded (not verified) token with the
+# right audience is used as-is, and whoami reads /me through the real client.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams whoami
+stdout 'Alice Example'
+stdout 'alice@example.com'
+
+exec teams whoami --json
+stdout '"id": "user-1"'
+stdout '"displayName": "Alice Example"'
+
+exec teams auth status
+stdout 'TEAMS_ACCESS_TOKEN'
+stdout 'Chat.Read'

@@ -1,0 +1,59 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-auth-status - Show the signed-in account, its scopes and the token store
+
+
+.SH SYNOPSIS
+\fBteams auth status [flags]\fP
+
+
+.SH DESCRIPTION
+Show who you are signed in as, which scopes the current token carries (the
+\fBscp\fR claim lists every consented scope), and where the token cache lives.
+
+.PP
+Exits 3 when the profile is not signed in or the refresh token is dead.
+
+
+.SH OPTIONS
+\fB--admin-request\fP[=false]
+	print the admin-consent and redirect-URI changes to request
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for status
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-auth(1)\fP

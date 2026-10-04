@@ -1,0 +1,15 @@
+# A fresh profile is not signed in: `auth status` explains it and exits 3.
+! exec teams auth status
+stderr 'run `teams auth login`'
+stdout 'signed in:'
+stdout 'token store'
+
+! exec teams auth status --json
+stdout '"signed_in": false'
+stdout '"requested_scopes"'
+
+# The admin request text is what goes into a ticket.
+! exec teams auth status --admin-request
+stdout 'adminconsent'
+stdout 'Mobile and desktop'
+stdout 'Allow public client flows'

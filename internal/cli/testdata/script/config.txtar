@@ -1,0 +1,31 @@
+# config get/set/list work on the TOML file the environment points at.
+exec teams config set profiles.bot.tenant colorkrew.com
+stdout 'colorkrew.com'
+
+exec teams config set profiles.bot.scopes read-only
+exec teams config set profiles.bot.mode read-only
+exec teams config set default_profile bot
+
+exec teams config get profiles.bot.tenant
+stdout 'colorkrew.com'
+
+exec teams config get default_profile
+stdout 'bot'
+
+exec teams config list
+stdout 'default_profile'
+stdout 'read-only'
+
+# The file is real TOML and keeps the profile.
+exec teams config get profiles.bot.mode --json
+stdout '"value": "read-only"'
+
+! exec teams config get nope.nope
+stderr 'unknown config key'
+stderr 'known keys'
+
+! exec teams config set profiles.bot.mode sideways
+stderr 'mode must be'
+
+! exec teams config set profiles.bot.token_store s3://bucket
+stderr 'token_store must be'

@@ -1,0 +1,521 @@
+# ci.yml -- every PR and every push to main (PLAN.md "Workflows" table).
+#
+# Conventions that apply to this whole file:
+#   * `permissions: contents: read` by default; jobs that need more say so.
+#   * Every third-party action is pinned by full commit SHA, with the release
+#     tag in a trailing comment so Renovate can bump it (renovate.json).
+#   * Every step runs a Makefile target, because the Makefile is the single
+#     entry point for humans and CI (PLAN.md "Toolchain and local workflow").
+#     The only exceptions are documented inline.
+#   * `concurrency` cancels superseded PR runs.
+#
+# This workflow is also a reusable workflow (`on.workflow_call`): nightly.yml
+# calls it with `refs-check-only: true` so the refs-check job has exactly one
+# definition (PLAN.md "Workflows" table: "refs-check (job, reused)").
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_call:
+    inputs:
+      refs-check-only:
+        description: >-
+          Run only the reference-mirror jobs. Used by nightly.yml to reuse the
+          refs-check job without re-running the whole PR pipeline.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # One source of truth for the Go version (PLAN.md "Toolchain and local
+  # workflow"): actions/setup-go reads go.mod, never a hardcoded version.
+  GO_VERSION_FILE: go.mod
+  # Pinned tool versions, bumped by Renovate through the `# renovate:` comment
+  # directly above each value (see renovate.json -> customManagers). Keep them
+  # equal to the versions used locally so `make lint` and CI agree:
+  # golangci-lint v2.13.2 validated .golangci.yml, GoReleaser v2.18.2 validated
+  # .goreleaser.yaml.
+  # renovate: datasource=github-releases depName=golangci/golangci-lint
+  GOLANGCI_LINT_VERSION: v2.13.2
+  # renovate: datasource=github-releases depName=goreleaser/goreleaser
+  GORELEASER_VERSION: v2.18.2
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # lint: golangci-lint + formatters, go mod tidy diff check, goreleaser check
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          # Covers both the module cache (GOMODCACHE) and the build cache; the
+          # key actions/setup-go derives is a hash of these files, so a go.sum
+          # change always produces a cold cache.
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # install-only: the action installs the pinned binary (and puts it on
+      # PATH), and `make lint` -- not the action -- runs it, so CI and the local
+      # loop execute the exact same command.
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+
+      # The action skips its own config validation when install-only is set, so
+      # validate the v2 config explicitly: a schema error must fail here, not in
+      # `make lint`.
+      - name: Validate .golangci.yml
+        run: golangci-lint config verify
+
+      - name: Check formatting (gofumpt + goimports)
+        run: make fmt-check
+
+      - name: Lint
+        run: make lint
+
+      - name: Check go.mod/go.sum are tidy
+        run: make tidy
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          install-only: true
+
+      - name: Validate .goreleaser.yaml
+        run: make release-check
+
+  # ---------------------------------------------------------------------------
+  # test: ubuntu / macos / windows, race detector, shuffled, testscript
+  # ---------------------------------------------------------------------------
+  test:
+    name: test (${{ matrix.os }})
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # Report every platform, not just the first failure.
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # `make test` is `go test -race -shuffle=on ./...` (Makefile). Layer 5
+      # testscript tests are ordinary Go tests driven by testscript.Main, so the
+      # same command runs them on all three platforms (PLAN.md Layer 5 and
+      # "CI gates").
+      - name: Run the test suite (layers 1-5, includes testscript)
+        if: runner.os != 'Windows'
+        run: make test
+
+      # Documented exception to "every step runs a make target": the Makefile
+      # sets `SHELL := /usr/bin/env bash` and shells out to `find`, and the
+      # GitHub Windows runner image ships no `make` (checked against
+      # actions/runner-images main -> images/windows/Windows2025-Readme.md).
+      # This is the identical command the `test` target runs.
+      - name: Run the test suite (layers 1-5, includes testscript)
+        if: runner.os == 'Windows'
+        run: go test -race -shuffle=on ./...
+
+  # ---------------------------------------------------------------------------
+  # coverage: merged profile, 80% floor, Codecov (PLAN.md "CI gates")
+  # ---------------------------------------------------------------------------
+  coverage:
+    name: coverage
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # `make cover` runs the whole suite once with -covermode=atomic into a
+      # single merged coverage.out, then enforces the floor through
+      # internal/testing/coveragecheck. That exclusion list lives in the
+      # Makefile and is the reviewed coverage scope (PLAN.md "Coverage scope").
+      - name: Enforce the coverage floor (>= 80%)
+        run: make cover
+
+      - name: Upload coverage to Codecov
+        # Runs even when the gate above failed, so a red build still has data
+        # (same intent as refs/teams-mcp/.github/workflows/ci.yml).
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.out
+          fail_ci_if_error: false
+          verbose: true
+
+  # ---------------------------------------------------------------------------
+  # vuln: govulncheck
+  # ---------------------------------------------------------------------------
+  vuln:
+    name: vuln
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Run govulncheck
+        run: make vuln
+
+  # ---------------------------------------------------------------------------
+  # build: the full cross-compile matrix, uploaded for the smoke job
+  # ---------------------------------------------------------------------------
+  build:
+    name: build (snapshot)
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        # fetch-depth: 0 is required by GoReleaser (it needs the tag/history).
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          install-only: true
+
+      - name: Cross-compile the release matrix
+        run: make snapshot
+
+      - name: Upload dist/
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          # The dist/ tree is ~30 MB of binaries; a week is enough for the
+          # smoke job and for debugging a failed PR.
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # smoke: install the snapshot on a runner with no Go and no Node
+  # (PLAN.md "CI gates" -> Release smoke)
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: smoke (${{ matrix.os }})
+    if: ${{ inputs['refs-check-only'] != true }}
+    needs:
+      - build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      # Deliberately no actions/setup-go and no actions/setup-node in this job:
+      # the point is that a released artifact runs on a machine with no Go
+      # toolchain and no Node runtime behind it.
+      - name: Download the snapshot artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      - name: Install the snapshot binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Linux)   os=linux;   arch=amd64; exe=teams ;;
+            macOS)   os=darwin;  arch=arm64; exe=teams ;;
+            Windows) os=windows; arch=amd64; exe=teams.exe ;;
+            *) echo "::error::unsupported runner OS: $RUNNER_OS"; exit 1 ;;
+          esac
+          # `make snapshot` lays the matrix out as dist/<build>_<os>_<arch>[_<variant>]/teams
+          src=$(find dist -type f -path "dist/teams_${os}_${arch}*/${exe}" | head -n 1)
+          test -n "$src"
+          echo "installing $src"
+          bin_dir="$RUNNER_TEMP/teams-bin"
+          mkdir -p "$bin_dir"
+          cp "$src" "$bin_dir/"
+          chmod +x "$bin_dir"/*"$exe"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+
+      - name: teams version
+        shell: bash
+        # TEAMS_NO_UPDATE_CHECK also keeps the smoke test off the network
+        # (PLAN.md "Other dev experience" -> Update check).
+        env:
+          TEAMS_NO_UPDATE_CHECK: "1"
+        run: teams version
+
+      - name: teams auth status must exit 3 (auth required)
+        shell: bash
+        env:
+          TEAMS_NO_UPDATE_CHECK: "1"
+        run: |
+          set -euo pipefail
+          set +e
+          teams auth status
+          code=$?
+          set -e
+          echo "'teams auth status' exited $code"
+          if [ "$code" -ne 3 ]; then
+            echo "::error::expected 'teams auth status' to exit 3 (auth required), got $code"
+            exit 1
+          fi
+
+      - name: Assert the released binary has no test-only endpoints
+        shell: bash
+        env:
+          TEAMS_NO_UPDATE_CHECK: "1"
+        run: |
+          set -euo pipefail
+          # PLAN.md "CI gates" -> Release smoke: the `-tags dev` build is the
+          # only place an endpoint override exists, and it must never ship.
+          # Update this list in the same PR that introduces such a flag.
+          banned="endpoint-override fakegraph-base-url fakeidp-base-url TEAMS_TEST_GRAPH_URL TEAMS_TEST_AUTHORITY"
+          binary=$(command -v teams)
+          echo "inspecting $binary"
+          for token in $banned; do
+            if grep -a -q -e "$token" "$binary"; then
+              echo "::error::released binary contains the test-only marker '$token'"
+              exit 1
+            fi
+            if teams --help 2>&1 | grep -q -e "$token"; then
+              echo "::error::released binary exposes the test-only flag '$token'"
+              exit 1
+            fi
+          done
+
+      # `make smoke` (scripts/smoke.sh) is the local half of this job and is
+      # still missing from the repo; see docs/ci.md.
+
+  # ---------------------------------------------------------------------------
+  # docs: regenerate docs/commands + man pages, fail on diff
+  # ---------------------------------------------------------------------------
+  docs:
+    name: docs
+    if: ${{ inputs['refs-check-only'] != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Check the generated docs are up to date
+        run: make docs-check
+
+  # ---------------------------------------------------------------------------
+  # refs-check: the vendored reference mirror (PLAN.md "Workflows" table)
+  # ---------------------------------------------------------------------------
+  refs-changed:
+    name: refs-changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      refs: ${{ steps.detect.outputs.refs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes to the mirror or its generated inputs
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Reused from nightly.yml: the nightly must always recheck the mirror.
+          if [ "$EVENT_NAME" = "workflow_call" ]; then
+            echo "refs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$EVENT_NAME" in
+            pull_request) range="${BASE_SHA}...${HEAD_SHA}" ;;
+            push)
+              if printf '%s' "$BEFORE_SHA" | grep -qE '^0+$'; then
+                range="HEAD^...HEAD"
+              else
+                range="${BEFORE_SHA}...${HEAD_SHA}"
+              fi
+              ;;
+            *) range="HEAD^...HEAD" ;;
+          esac
+          # Paths whose change can invalidate the committed mirror artifacts.
+          # The Layer 6 inputs (the trimmed OpenAPI subset, the route list and
+          # the provenance record) are generated from refs/ and committed under
+          # internal/testing/testdata/openapi/, so that directory counts as an
+          # input here (PLAN.md Layer 6).
+          changed=$(git diff --name-only "$range" || true)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(scripts/fetch-refs\.sh|scripts/gen-contract\.sh|refs/INDEX\.md|refs/MANIFEST\.md|internal/testing/contract/|internal/testing/testdata/openapi/)'; then
+            echo "refs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "refs=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  refs-check:
+    name: refs-check
+    needs:
+      - refs-changed
+    if: needs.refs-changed.outputs.refs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # The mirror is pinned by refs/MANIFEST.md, so its hash is the cache key
+      # (PLAN.md "Workflows" table: "cached by the hash of refs/MANIFEST.md").
+      # No restore-keys on purpose: a stale mirror restored over the checked-out
+      # refs/INDEX.md or refs/MANIFEST.md would silently verify the wrong SHAs.
+      # A miss just means a fresh fetch.
+      - name: Cache the reference mirror
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: refs
+          key: refs-${{ hashFiles('refs/MANIFEST.md') }}
+
+      # scripts/fetch-refs.sh is idempotent and keeps every source on the SHA in
+      # refs/MANIFEST.md; a cache hit makes it a no-op.
+      - name: Fetch the mirror at the pinned SHAs
+        run: scripts/fetch-refs.sh
+
+      - name: Verify the mirror
+        run: make refs-check
+
+      - name: Regenerate the Layer 6 contract inputs
+        run: scripts/gen-contract.sh
+
+      - name: Fail when the regenerated inputs differ from the committed ones
+        run: |
+          set -euo pipefail
+          # refs/ is gitignored apart from INDEX.md and MANIFEST.md, so `git add`
+          # only sees the committed generated artifacts, never the mirror.
+          git add -A
+          if ! git diff --cached --exit-code; then
+            echo "::error::the mirror or the generated Layer 6 inputs are stale."
+            echo "::error::run 'scripts/fetch-refs.sh && scripts/gen-contract.sh' and commit the result."
+            git --no-pager diff --cached --stat
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # pr-title: Conventional Commits, enforced because GoReleaser's changelog
+  # groups on those prefixes (PLAN.md "Cutting a release")
+  # ---------------------------------------------------------------------------
+  pr-title:
+    name: pr-title
+    # Only meaningful for pull_request; skipped for pushes and for the
+    # workflow_call from nightly.yml.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the PR title follows Conventional Commits
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          # A small script rather than another pinned third-party action: the
+          # rule is one regex, and release notes depend on it.
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat(auth): add device code flow'"
+            echo "::error::got: $TITLE"
+            exit 1
+          fi
+          echo "ok: $TITLE"

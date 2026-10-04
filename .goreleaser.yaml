@@ -1,0 +1,307 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# GoReleaser OSS configuration for the `teams` CLI (PLAN.md "CI/CD, releasing
+# and dev experience"). Everything here is OSS-only; every Pro-only feature is
+# called out in a comment below so nobody designs around it by accident.
+#
+# Docs are mirrored under refs/goreleaser/www/content/ and cited per key.
+#
+# Local entry points (Makefile is the single entry point):
+#   make release-check   -> goreleaser check
+#   make snapshot        -> goreleaser build --snapshot --clean
+# CI:
+#   .github/workflows/ci.yml  lint job -> make release-check
+#   .github/workflows/ci.yml  build job -> make snapshot
+#   .github/workflows/release.yml    -> goreleaser release --clean
+#
+# Version: GoReleaser v2.18.x (config version 2).
+
+version: 2
+
+project_name: teams
+
+# ---------------------------------------------------------------------------
+# Builds
+# refs/goreleaser/www/content/customization/builds/builders/go.md
+# ---------------------------------------------------------------------------
+builds:
+  - id: teams
+    main: ./cmd/teams
+    # Binary name is `teams`; the nfpm packages below add a `teams-cli` symlink
+    # for the collision with the old Microsoft Teams for Linux binary
+    # (PLAN.md "Other dev experience" -> Binary name).
+    binary: teams
+    env:
+      # darwin/linux/windows x amd64/arm64 with no cgo: the CLI is pure Go.
+      - CGO_ENABLED=0
+    flags:
+      # -trimpath + mod_timestamp below make the builds reproducible
+      # (refs/.../builders/go.md "Reproducibility").
+      - -trimpath
+    ldflags:
+      # Same variable names as the Makefile (LDFLAGS): -X main.version/commit/date.
+      # `main.date` uses CommitDate (not the build time) so a rebuild of the same
+      # commit is byte-identical.
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .CommitDate }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# ---------------------------------------------------------------------------
+# Archives
+# refs/goreleaser/www/content/customization/package/archives.md
+# ---------------------------------------------------------------------------
+archives:
+  - id: default
+    ids:
+      - teams
+    # tar.gz everywhere; zip for Windows only (format_overrides below).
+    formats:
+      - tar.gz
+    # Explicit rather than relying on the documented default:
+    #   {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    # install.sh and the docs quote this file name.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # Glob set replaces the documented default
+    # (license*/LICENSE*/readme*/README*/changelog*/CHANGELOG*). Any glob that
+    # does not match a file is fine, so this is safe before those files land
+    # (refs/.../package/archives.md, "Deep diving into the globbing options").
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      # The generated man pages travel with every archive; `make docs` produces
+      # them under docs/man/ (goreleaser's `info`/`dst` per-entry form).
+      - src: docs/man/*
+        dst: man
+
+# ---------------------------------------------------------------------------
+# Checksums
+# refs/goreleaser/www/content/customization/package/checksum.md
+# ---------------------------------------------------------------------------
+checksum:
+  # One fixed name across every artifact: release.yml signs and attests exactly
+  # this file (refs/.../package/checksum.md and .../publish/attestations.md).
+  name_template: checksums.txt
+  algorithm: sha256
+
+# ---------------------------------------------------------------------------
+# SBOMs (syft)
+# refs/goreleaser/www/content/customization/sbom.md
+# ---------------------------------------------------------------------------
+sboms:
+  - id: archives
+    # One SBOM per archive; the default document name is
+    # `{{ .ArtifactName }}.sbom.json` and the default command is `syft`.
+    artifacts: archive
+
+# ---------------------------------------------------------------------------
+# Signing (cosign keyless)
+# refs/goreleaser/www/content/customization/sign/sign.md ("Signing with cosign")
+# and refs/goreleaser/www/content/blog/cosign-v3.md (the `--bundle` shape: one
+# `${artifact}.sigstore.json` instead of separate certificate + signature).
+#
+# Keyless needs GitHub OIDC, so release.yml sets `permissions.id-token: write`.
+# No COSIGN_EXPERIMENTAL is needed with cosign v3 (the old
+# blog/supply-chain-security.md note predates v2).
+# ---------------------------------------------------------------------------
+signs:
+  - id: cosign
+    cmd: cosign
+    # `${artifact}` is dist/checksums.txt, so this writes
+    # dist/checksums.txt.sigstore.json.
+    signature: "${artifact}.sigstore.json"
+    artifacts: checksum
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - ${artifact}
+      - --yes
+
+# ---------------------------------------------------------------------------
+# Changelog
+# refs/goreleaser/www/content/customization/publish/changelog.md
+# ---------------------------------------------------------------------------
+changelog:
+  # PR titles are enforced to be Conventional Commits by the pr-title job in
+  # ci.yml, and releases are squash-merged, so `github` grouping works directly.
+  use: github
+  sort: asc
+  # -1 drops the commit hash from the changelog ("Max commit hash length").
+  abbrev: -1
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^build:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+# ---------------------------------------------------------------------------
+# GitHub release
+# refs/goreleaser/www/content/customization/publish/scm/_index.md
+# ---------------------------------------------------------------------------
+release:
+  # v0.x: any tag with a prerelease indicator (v0.2.0-rc.1) becomes a GitHub
+  # pre-release and, together with `skip_upload: auto` below, stays out of the
+  # cask/bucket (PLAN.md "Release process").
+  prerelease: auto
+  # Rollback is "mark the release pre-release and ship a patch tag"; never
+  # re-tag, so an existing release body is kept (this is also the default).
+  mode: keep-existing
+
+# ---------------------------------------------------------------------------
+# Install channels
+# ---------------------------------------------------------------------------
+
+# Homebrew: `brews:` (formulas) is DEPRECATED since GoReleaser v2.10
+# (refs/goreleaser/www/content/customization/publish/homebrew_formulas.md),
+# use `homebrew_casks:`. Install: brew install --cask floriscornel/tap/teams
+# refs/goreleaser/www/content/customization/publish/homebrew_casks.md
+homebrew_casks:
+  - name: teams
+    # `binaries` is the binary name inside the cask; default is the cask name.
+    binaries:
+      - teams
+    # Explicit repository so a GoReleaser run outside the tap can still publish.
+    # The token falls back to GITHUB_TOKEN, which release.yml sets to a GitHub
+    # App installation token (never a PAT, PLAN.md "Release secrets"); see
+    # docs/ci.md.
+    repository:
+      owner: floriscornel
+      name: homebrew-tap
+      branch: main
+    # v0.x prereleases do not update the tap.
+    skip_upload: auto
+    description: "teams CLI - Microsoft Teams from the terminal"
+    homepage: "https://github.com/floriscornel/teams-cli"
+    # macOS Gatekeeper quarantines unsigned cask binaries. Decision for v0.x is
+    # to document the manual `xattr` (PLAN.md "Install channels"); notarization
+    # via refs/.../sign/notarize.md (anchore/quill, needs an Apple Developer ID
+    # certificate and an App Store Connect API key) is a v1.0 item.
+    caveats: |
+      To run the teams CLI you must clear the macOS quarantine flag once:
+
+        xattr -dr com.apple.quarantine "$(brew --prefix)/bin/teams"
+
+      The teams CLI is not notarized yet (see PLAN.md "Install channels").
+
+# Scoop: floriscornel/scoop-bucket
+# refs/goreleaser/www/content/customization/publish/scoop.md
+scoops:
+  - name: teams
+    repository:
+      owner: floriscornel
+      name: scoop-bucket
+      branch: main
+    skip_upload: auto
+    description: "teams CLI - Microsoft Teams from the terminal"
+    homepage: "https://github.com/floriscornel/teams-cli"
+
+# winget: intentionally disabled until v1.0. Every enablement opens a review PR
+# against microsoft/winget-pkgs (PLAN.md "Install channels"), and the OSS
+# publisher commits the manifest to a fork repo first.
+# refs/goreleaser/www/content/customization/publish/winget.md
+#
+# winget:
+#   - name: teams
+#     # Required by the schema.
+#     publisher: Floris Cornel
+#     short_description: "Microsoft Teams from the terminal"
+#     # SPDX identifier; fill in together with the LICENSE file added for nfpms.
+#     license: "<SPDX id>"
+#     package_identifier: floriscornel.teams
+#     publisher_url: "https://github.com/floriscornel"
+#     publisher_support_url: "https://github.com/floriscornel/teams-cli/issues/new"
+#     repository:
+#       owner: floriscornel
+#       name: winget-pkgs
+#       branch: main
+#       pull_request:
+#         enabled: true
+#         base:
+#           owner: microsoft
+#           name: winget-pkgs
+#           branch: master
+
+# Linux packages: deb, rpm, apk.
+# refs/goreleaser/www/content/customization/package/nfpm.md
+nfpms:
+  - id: packages
+    package_name: teams
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    vendor: floriscornel
+    homepage: "https://github.com/floriscornel/teams-cli"
+    # Without this nfpm falls back to `Unset Maintainer <unset@localhost>`
+    # (verified with GoReleaser v2.18.2, see docs/ci.md). The address is the
+    # GitHub noreply form, not a personal mailbox.
+    maintainer: "floris.cornel <floriscornel@users.noreply.github.com>"
+    description: |-
+      teams CLI - Microsoft Teams from the terminal.
+      A standalone Go port of teams-mcp with a thin hand-written Graph client.
+    # No `license:` on purpose: the repo has no LICENSE file yet and PLAN.md
+    # does not pin an SPDX identifier. GoReleaser's `metadata.license` is
+    # Pro-only, and deb/rpm/apk all build fine with an empty license field
+    # (verified with v2.18.2), so nothing is invented here. Add both the LICENSE
+    # file and this key in the same PR.
+    # The old Microsoft Teams for Linux package shipped /usr/bin/teams, so ship
+    # a `teams-cli` symlink next to it rather than claiming the name
+    # (PLAN.md "Install channels" -> Linux packages).
+    #
+    # `conflicts:` / `replaces:` are deliberately NOT set: PLAN.md says to check
+    # what the Microsoft package actually installed first.
+    contents:
+      - src: /usr/bin/teams
+        dst: /usr/bin/teams-cli
+        type: symlink
+    # The generated command reference can travel with the package once
+    # docs/commands has content; nfpm `contents` entries with a `src` glob that
+    # matches nothing are not safe to ship blind, so this is left out for now:
+    #   - src: docs/commands
+    #     dst: /usr/share/doc/teams-cli/commands
+    #     type: tree
+
+# ---------------------------------------------------------------------------
+# Snapshots (used by `make snapshot` and the ci.yml build job)
+# refs/goreleaser/www/content/customization/publish/snapshots.md
+# ---------------------------------------------------------------------------
+snapshot:
+  # Keep the documented default, spelled out so the ci.yml/smoke job and the
+  # local run agree on the name: <version>-SNAPSHOT-<short sha>.
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+# ---------------------------------------------------------------------------
+# Not Pro-only, but worth stating: nothing here uses GoReleaser Pro features.
+# Known Pro-only keys that are intentionally absent: metadata.maintainers /
+# metadata.license / metadata.homepage (v2.1), changelog.title + divider (v2.12),
+# changelog.paths, nfpm `if:`, homebrew_casks `app:`/`alternative_names`,
+# scoops `use: msi|nsis`, winget pull_request (the publisher is OSS, the Pro
+# part is the manifest templating), signs `if:`, sboms `installer`/`diskimage`
+# artifact kinds.
+# ---------------------------------------------------------------------------

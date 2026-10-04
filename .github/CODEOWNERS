@@ -1,0 +1,31 @@
+# CODEOWNERS
+#
+# Reviewers per path (PLAN.md "Other dev experience" -> Repo hygiene).
+# GitHub uses the *last* matching pattern, so the catch-all comes first and the
+# specific entries follow it.
+
+# Default owner for the whole tree.
+*                       @floriscornel
+
+# PLAN.md is the source of truth for every phase and AGENTS.md holds the rules
+# coding agents follow: both change only with an explicit review.
+/PLAN.md                @floriscornel
+/AGENTS.md              @floriscornel
+
+# CI/CD, release plumbing and the tools that gate the build. A change here can
+# publish artifacts, so it is never a drive-by edit.
+/.github/workflows/     @floriscornel
+/.goreleaser.yaml       @floriscornel
+/.golangci.yml          @floriscornel
+/renovate.json          @floriscornel
+/Makefile               @floriscornel
+/SECURITY.md            @floriscornel
+
+# The reference mirror's pinned SHAs and the curated index: a bump here changes
+# what every Graph/Entra/Teams call is written against.
+/refs/MANIFEST.md       @floriscornel
+/refs/INDEX.md          @floriscornel
+/scripts/fetch-refs.sh  @floriscornel
+
+# Generated command reference and man pages (make docs).
+/docs/                  @floriscornel

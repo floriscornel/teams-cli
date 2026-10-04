@@ -1,0 +1,66 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-auth-login - Sign in to Microsoft Teams with a browser or a device code
+
+
+.SH SYNOPSIS
+\fBteams auth login [flags]\fP
+
+
+.SH DESCRIPTION
+Sign in with the authorization code + PKCE flow in your browser, or with a
+device code (\fB--device\fR) on a headless machine. When no terminal is available
+the device-code flow is chosen automatically.
+
+.PP
+The MSAL token cache is written to the profile's token store: encrypted with a
+key from your OS keychain by default, or a 0600 plaintext file where no
+keychain is reachable.
+
+
+.SH OPTIONS
+\fB--device\fP[=false]
+	use the device-code flow instead of the browser
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for login
+
+.PP
+\fB--scopes\fP=""
+	override the profile's scopes (a preset name or a space separated list)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-auth(1)\fP

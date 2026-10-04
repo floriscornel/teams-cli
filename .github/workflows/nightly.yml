@@ -1,0 +1,150 @@
+# nightly.yml -- the scheduled jobs that are too slow (or too noisy) for a PR
+# (PLAN.md "Workflows" table, row nightly.yml).
+#
+# Three things run here:
+#   1. fuzz      -- `make fuzz-short` with a much longer -fuzztime budget
+#                   (PLAN.md "CI gates": "a short -fuzztime nightly");
+#   2. spec-drift-- re-runs Layer 6 against the SAME pinned spec SHA. This is
+#                   deliberately not "download the latest spec": the point is to
+#                   detect drift in our own toolchain and dependencies
+#                   (PLAN.md Layer 6, "Drift check");
+#   3. refs-check-- reuses the job from ci.yml via `workflow_call`, so the
+#                   mirror is verified on a schedule and not only on PRs.
+#
+# There is no `make` target for the contract-only subset of the suite (the
+# Makefile runs everything through `make test`); see docs/ci.md for the
+# follow-up.
+
+name: nightly
+
+on:
+  schedule:
+    # 04:17 UTC: off the hour, so we are not queued behind the :00 stampede.
+    - cron: "17 4 * * *"
+  # So a maintainer can reproduce a red nightly without waiting 24h.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  # A new nightly supersedes the previous one.
+  cancel-in-progress: true
+
+env:
+  GO_VERSION_FILE: go.mod
+
+jobs:
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    # 15s x targets locally; 10m each here (the Makefile reads FUZZTIME).
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # `make fuzz-short` walks every Fuzz* target in cmd/ and internal/ and
+      # runs it with `-fuzztime ${FUZZTIME}`. With no fuzz targets yet this is a
+      # clean no-op.
+      - name: Fuzz every target for 10 minutes
+        env:
+          FUZZTIME: 10m
+          # Longer runs may find input that crashes a worker; keep the whole
+          # corpus so the next run starts warm.
+          GOFLAGS: -timeout=30m
+        run: make fuzz-short
+
+  spec-drift:
+    name: spec-drift (Layer 6, pinned spec)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # PLAN.md Layer 6 says the drift check "opens an issue when a rerun
+    # disagrees"; that needs issue write access.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      # Note what this job does NOT do: it never fetches refs/ and never
+      # resolves a branch tip. The trimmed OpenAPI description and the
+      # api-reference route list are committed inputs, pinned by the SHA in
+      # refs/MANIFEST.md, and `scripts/fetch-refs.sh --update` is the only
+      # supported way to move them (reviewed like any other dependency).
+      #
+      # Layer 6 validation is part of the normal test suite, so `make test` is
+      # what re-runs it; a spec-drift failure therefore shows up as a test
+      # failure, not as a diff against Microsoft.
+      #
+      # PLAN.md calls this "weekly"; running it nightly is a superset and the
+      # suite is cheap.
+      - name: Re-run the contract tests against the pinned spec
+        run: make test
+
+      - name: Record the pinned mirror SHAs for the failure report
+        if: failure()
+        run: |
+          set -euo pipefail
+          echo "=== refs/MANIFEST.md (pinned SHAs) ==="
+          cat refs/MANIFEST.md || true
+
+      - name: File a drift issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Same pinned inputs, different verdict => our toolchain or a
+          # dependency moved, not Microsoft.
+          title="spec drift: Layer 6 contract tests fail against the pinned spec"
+          if gh issue list --state open --search "$title in:title" --json number --jq 'length' | grep -qv '^0$'; then
+            echo "an open drift issue already exists; not filing another"
+            exit 0
+          fi
+          body=$(printf '%s\n' \
+            "The nightly Layer 6 run failed against the **same pinned spec SHA**." \
+            "" \
+            "That means a tool or dependency moved, not the Graph description: the" \
+            "trimmed OpenAPI subset and the route list are committed and pinned by" \
+            "\`refs/MANIFEST.md\`, and this job never downloads a newer spec." \
+            "" \
+            "- Run: $RUN_URL" \
+            "- Commit: ${{ github.sha }}" \
+            "" \
+            "Usual suspects: \`kin-openapi\` (validator changes), the Go toolchain, or" \
+            "the golden files produced by \`scripts/gen-contract.sh\`.")
+          gh issue create --title "$title" --body "$body"
+
+  refs-check:
+    name: refs-check
+    # Reuse the definition from ci.yml: ci.yml is a reusable workflow
+    # (`on.workflow_call`) and this input selects just the mirror jobs.
+    uses: ./.github/workflows/ci.yml
+    with:
+      refs-check-only: true
+    permissions:
+      contents: read

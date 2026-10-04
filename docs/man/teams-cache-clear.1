@@ -1,0 +1,75 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-cache-clear - Delete the rebuildable cache (never tokens or config)
+
+
+.SH SYNOPSIS
+\fBteams cache clear [flags]\fP
+
+
+.SH DESCRIPTION
+Delete local, rebuildable data.
+
+.PP
+With no flags it removes the entity cache; --names removes only the
+name/person cache; --ai also removes AI session history and memory;
+--all removes everything except the config file and the token secrets.
+
+.PP
+Tokens are never deleted: use \fBteams auth logout\fR for that.
+
+
+.SH OPTIONS
+\fB--ai\fP[=false]
+	also clear AI session history and memory
+
+.PP
+\fB--all\fP[=false]
+	clear all local state except config and tokens
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for clear
+
+.PP
+\fB--names\fP[=false]
+	clear only the name and person cache
+
+.PP
+\fB--yes\fP[=false]
+	do not ask for confirmation
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-cache(1)\fP

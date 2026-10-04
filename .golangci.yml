@@ -1,0 +1,156 @@
+# golangci-lint configuration (schema version 2, golangci-lint >= v2).
+#
+# The linter and formatter sets come straight from PLAN.md "Toolchain and local
+# workflow": errcheck, govet, staticcheck, gosec, errorlint, bodyclose, noctx,
+# misspell, gocritic, revive, forbidigo, depguard; formatters gofumpt and
+# goimports.
+#
+# Local entry point: `make lint` (golangci-lint run ./...), `make fmt-check`.
+# CI entry point: the `lint` job in .github/workflows/ci.yml.
+#
+# v2 note: the v1 `issues.exclude-rules` block is gone. Per-file exclusions now
+# live under `linters.exclusions.rules` (see the golangci-lint v2 JSON schema,
+# `linters.exclusions.rules[].path` / `.linters`). `issues:` itself still exists
+# in v2 but only carries limits, `new*` filtering and `fix`.
+#
+# Verify with: golangci-lint config verify
+
+version: "2"
+
+run:
+  # PLAN.md "Toolchain and local workflow": CI reads the Go version from go.mod,
+  # so the linter must not force a different one.
+  timeout: 5m
+  tests: true
+
+linters:
+  # Start from an empty set: the list below is the contract from PLAN.md, and
+  # nothing gets in by default.
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - errorlint
+    - forbidigo
+    - gocritic
+    - gosec
+    - govet
+    - misspell
+    - noctx
+    - revive
+    - staticcheck
+
+  settings:
+    # forbidigo keeps output and exit codes centralized (PLAN.md "Toolchain and
+    # local workflow"): nothing may call fmt.Print* or os.Exit outside
+    # internal/output and cmd/. The exclusion for those two trees is configured
+    # under `linters.exclusions.rules` below.
+    forbidigo:
+      # Match resolved types, so an aliased import (`import p "fmt"`) is still
+      # caught. Without this the analyzer only matches literal source text.
+      analyze-types: true
+      exclude-godoc-examples: true
+      forbid:
+        - pattern: '^fmt\.Print(f|ln)?$'
+          msg: use internal/output to render user-facing text (PLAN.md output conventions)
+        - pattern: '^os\.Exit$'
+          msg: return an error up to cmd/ so the process exit code comes from one place (0 ok, 1 error, 2 usage, 3 auth, 4 not found, 5 throttled)
+
+    # depguard encodes three architectural decisions from PLAN.md.
+    depguard:
+      rules:
+        # The thin Graph client is hand-written; the SDK is not allowed.
+        msgraph-sdk-go:
+          files:
+            - "$all"
+          deny:
+            - pkg: github.com/microsoftgraph/msgraph-sdk-go
+              desc: "the teams CLI uses a thin hand-written Graph client, not msgraph-sdk-go (PLAN.md \"Language decision: Go\")"
+
+        # Layer 7: the allowed recorder is gopkg.in/dnaeon/go-vcr.v4, not the
+        # incompatible v1 (which shows up in the module cache as a dependency of
+        # the Anthropic SDK and sorts first in a grep).
+        go-vcr:
+          files:
+            - "$all"
+          deny:
+            - pkg: github.com/dnaeon/go-vcr
+              desc: import gopkg.in/dnaeon/go-vcr.v4/pkg/{recorder,cassette} instead (PLAN.md Layer 7)
+
+        # Fakes, devserver and other dev tooling under internal/testing are for
+        # tests; production code must depend on the real seams.
+        #
+        # `files` also excludes internal/testing itself: the rule is about
+        # production code importing test tooling, and the fake packages and the
+        # gencontract tool legitimately import each other. Only non-test files
+        # outside internal/testing are checked.
+        internal-testing:
+          files:
+            - "!$test"
+            - "!**/internal/testing/**"
+          deny:
+            - pkg: github.com/floriscornel/teams-cli/internal/testing
+              desc: internal/testing is test-only tooling and must not be imported by non-test code (PLAN.md Layer 2)
+
+  exclusions:
+    # Generated files (cobra docs, the trimmed OpenAPI subset) are never linted.
+    generated: lax
+    rules:
+      # forbidigo's two exceptions from PLAN.md: internal/output renders text,
+      # cmd/ decides the exit code. Excluding the linter for those paths (rather
+      # than sprinkling nolint comments) keeps the ban strict everywhere else.
+      - linters:
+          - forbidigo
+        path: ^internal/output($|/)
+      # `(^|/)cmd/` rather than `^cmd/`: a cmd/ directory anywhere is an entry
+      # point, which also covers dev tools such as
+      # internal/testing/contract/cmd/gencontract that legitimately call
+      # os.Exit and print to stdout.
+      - linters:
+          - forbidigo
+        path: (^|/)cmd/
+      # Deviation from the literal wording of PLAN.md, deliberate and narrow:
+      # PLAN.md says "outside internal/output and cmd/", but this repo's dev
+      # tools live at internal/testing/<tool>/main.go (coveragecheck for
+      # `make cover`, gencontract, docgen). They are main packages driven by the
+      # Makefile, they print to stdout by design, and PLAN.md already treats
+      # internal/testing/... as fakes and dev tooling outside the coverage
+      # scope. The alternative -- moving each tool under a cmd/ directory -- is
+      # a larger change than this config. The ban stays strict for every
+      # production package (internal/auth, internal/cli, internal/graph, ...).
+      - linters:
+          - forbidigo
+        path: ^internal/testing/
+      # gosec's taint rules cannot tell a test fixture from user input: the
+      # paths in a test are the test's own temp dirs, the "hardcoded
+      # credentials" are literal client IDs and vault names, and the "XSS" is a
+      # canned response body. Keeping the finding off for _test.go files is
+      # narrower than disabling the rules outright in production code.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G101|G302|G304|G703|G705
+      # internal/store owns the on-disk layout: every path it opens is built
+      # from os.UserConfigDir/os.UserCacheDir plus a validated profile name
+      # (store.ValidProfileName), never from user input.
+      - linters:
+          - gosec
+        path: ^internal/store/
+        text: G304
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      # gofumpt's extra rules beyond gofmt; `extra.group-params` is the v2
+      # spelling (`extra-rules` is deprecated since golangci-lint v2.7).
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/floriscornel/teams-cli
+  exclusions:
+    generated: lax

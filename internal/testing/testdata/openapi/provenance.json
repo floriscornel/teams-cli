@@ -1,0 +1,40 @@
+{
+  "source": {
+    "path": "refs/openapi/openapi/v1.0/openapi.yaml",
+    "repository": "microsoftgraph/msgraph-metadata",
+    "sha": "7b2914c8ad1340129f52aa785f13c074cb46fd7c",
+    "mirror": "scripts/fetch-refs.sh (AGENTS.md); refs/ is gitignored and untrusted reference data"
+  },
+  "generator": "internal/testing/contract (scripts/gen-contract.sh)",
+  "outputs": {
+    "trimmedSpec": "internal/testing/testdata/openapi/graph-v1.0-trimmed.yaml",
+    "routeList": "internal/testing/testdata/openapi/routes.txt"
+  },
+  "counts": {
+    "pathKeysInSource": 11546,
+    "pathsKept": 41,
+    "schemasKept": 655,
+    "responsesKept": 9,
+    "parametersKept": 5,
+    "requestBodiesKept": 0,
+    "odataTypeRequiredStripped": 504,
+    "discriminatorMappingEntriesPruned": 1099,
+    "pathAliasRewrites": 6
+  },
+  "trimRules": [
+    "Keep only the paths listed in internal/testing/contract/routes.go, which is generated from the api-reference (refs/graph/api-reference/v1.0/api/) and not from the description. The description declares operations with no api-reference page (CreateHostedContents), so deriving routes from spec operations would bless a bug (refs/INDEX.md, PLAN.md Layer 6).",
+    "Keep only the HTTP methods the CLI uses on those paths: GET, POST, PATCH, PUT, DELETE.",
+    "Match a route to a spec path by path shape (every {parameter} compared as a wildcard, because the two sources disagree on parameter names), preferring the candidate whose externalDocs URL names the api-reference page the route came from.",
+    "Re-key every retained path to the api-reference spelling (/groups/{group-id}/team/channels/... becomes /teams/{team-id}/channels/...) and rename its path-parameter declarations to match, so the trimmed copy matches what internal/graph sends.",
+    "Keep the whole components/$ref closure reachable from the retained paths: schemas, responses, parameters and requestBodies.",
+    "Drop components/examples entirely (they are illustrative only and are the single largest block in the source).",
+    "Drop every path and component the closure does not reach. The retained operations keep their x-ms-* vendor extensions, since those belong to the operation node.",
+    "Validate the result with kin-openapi before writing it, so a malformed trim fails the generator instead of the first contract test.",
+    "Sort path keys and component names lexicographically and emit block-style YAML with a 2-space indent, so a re-run produces a byte-identical file (PLAN.md: the refs-check job fails on git diff)."
+  ],
+  "divergences": [
+    "@odata.type is no longer required. The source marks it required in thousands of schemas, including microsoft.graph.entity and microsoft.graph.chatMessage, while the api-reference says only body is mandatory on a write (refs/graph/api-reference/v1.0/api/channel-post-messages.md, 'Request body': 'Only the body property is mandatory. All other properties are optional.'). The property stays declared, so sending it is still validated. See PLAN.md Layer 6 and stripODataTypeRequired.",
+    "Discriminator mappings only list schemas that survived the trim. The source's microsoft.graph.entity mapping lists every entity type in the description; keeping it would pull the whole description back in through the $ref closure. kin-openapi only reads a mapping when the input carries the discriminator property, and the surviving entries are exactly the reachable ones.",
+    "Path parameter names follow the api-reference (team-id, channel-id, message-id, reply-id, hosted-content-id), not the description (group-id, chatMessage-id, chatMessage-id1). The two sources spell the same endpoints differently."
+  ]
+}

@@ -1,0 +1,8 @@
+# The version command prints build information and a stable JSON schema.
+exec teams version
+stdout '^teams '
+stdout 'go'
+
+exec teams version --json
+stdout '"version":'
+stdout '"commit":'

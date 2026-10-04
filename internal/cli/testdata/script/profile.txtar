@@ -1,0 +1,17 @@
+# The built-in me profile exists without a config file; a configured profile
+# shows up beside it, and `profile use` moves the default.
+exec teams config set profiles.bot.tenant colorkrew.com
+
+exec teams profile list
+stdout 'me \*'
+stdout 'bot'
+stdout 'colorkrew.com'
+
+exec teams profile use bot
+stdout 'default profile is now bot'
+
+exec teams profile list
+stdout 'bot \*'
+
+! exec teams profile use ghost
+stderr 'profile "ghost" is not configured'
