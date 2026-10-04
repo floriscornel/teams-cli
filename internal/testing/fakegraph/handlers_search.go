@@ -125,8 +125,14 @@ func handleSearch(c *handlerCtx) {
 			Resource: st.searchResource(m),
 		})
 	}
+	// searchTerms is a non-nullable array in the description, so a query that
+	// carries only scope terms (IsMentioned:true, for example) still sends [].
+	terms := kql.freeText
+	if terms == nil {
+		terms = []string{}
+	}
 	c.json(http.StatusOK, searchResultWire{Value: []searchResponseWire{{
-		SearchTerms: kql.freeText,
+		SearchTerms: terms,
 		HitsContainers: []searchHitsContainerWire{{
 			Hits:  hits,
 			Total: total,

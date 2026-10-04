@@ -448,10 +448,84 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
 - **Releases are GitHub Releases only.** `homebrew_casks:`, `scoops:`, `nfpms:` and the commented `winget:` block were removed from `.goreleaser.yaml`, along with the GitHub App installation token and the `RELEASE_APP_*` secrets that cross-repo pushes needed. macOS and Linux users install from an archive or with `go install`; Windows binaries stay in the release matrix. `docs/ci.md` records the reasoning.
 - **`mise run check` went from ~5 minutes to ~35 seconds** on a machine with the `refs/` mirror: the suite ran twice (once for the test gate, once for coverage) and is now one coverage run; `contract.Load` reloaded and re-compiled the 1 MB trimmed spec in thirteen tests and now loads it once per process; and the three `refs/`-dependent generator/trim tests skip in a race build, where the race detector multiplied their CPU-bound work by ~17 without being able to observe anything. See "Test speed" in `docs/ci.md`.
 
-### Phase 3: Read
+### Phase 3: Read (done 2026-10-04, open items listed)
 `team/channel/chat list` (plus `show`), `channel files`, `channel/chat/thread read`, `search`, `mentions`,
 `user search/show`, `file download`, `internal/ref` (URLs, names, people via `/me/people`, aliases, entity cache), `teams alias`,
 `chat list --unread` / `teams unread`, `--json`/`--jq`.
+
+#### What Phase 3 actually shipped, and the decisions it forced
+- **Landed:** every read command above; `internal/graph` gained the endpoint wrappers (`types.go`, `list.go`,
+  `teams.go`, `chats.go`, `messages.go`, `search.go`, `kql.go`, `users.go`, `files.go`, `usage.go`);
+  `internal/ref` (deep-link parser, name paths, person resolution, aliases, entity cache); `internal/format`
+  (HTML → markdown with mention merging and `<attachment>` handling, ported from the MCP); `internal/output`
+  gained `--jq` (gojq) and the markdown renderer (glamour on a TTY, raw markdown when piped); `internal/store`
+  gained the per-profile entity cache and the alias file; `internal/cli` gained ten commands.
+- **`--jq` implies `--json`,** and a string result prints unquoted, so `--jq '.[0].body'` composes with a shell.
+  The filter lives in `output.Printer.JSON`, which is the one place every command's JSON goes through.
+- **Names resolve through one place.** `internal/ref.Resolver` is the only component that maps a reference to
+  ids: alias → entity cache → membership → `/me/people` → `/users?$filter=startswith` → a raw
+  `GET /users/{id}` as the last resort, which is what makes `teams user show user-1` work. The cache is pruned with
+  the CLI's own clock (1 h for names, 7 d for people) and written under the per-profile lock.
+- **`--team` takes a name, not only a GUID.** A channel-message link without `groupId` therefore has a way out
+  (`--team Engineering`); with neither, it fails with exit 4 and the fix, because no Graph route goes from a
+  channel id to its team (PLAN.md:164). A bare message id is not resolvable at all and says so.
+- **`chat list --with <person>` keeps only the 1:1 chat**: a group chat that happens to contain the person is not
+  "the chat with" them. `chat list` always asks for `$expand=members`, because a 1:1 chat has no topic and its
+  title is built from the other participants.
+- **Person → chat is a scan, cached for 7 days** (PLAN.md:166). Read-only mode uses it too: it is a read.
+- **The channel inline-image route stays outside the Layer 6 route list.** The description declares
+  `GET /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/hostedContents/{chatMessageHostedContent-id}/$value`
+  (`refs/openapi/openapi/v1.0/openapi.yaml:734186`), but the api-reference page that documents the operation lists
+  only the container without the `/$value` suffix (`chatmessagehostedcontent-get.md:53-58`), and the generator's
+  check requires a page to document what the list commits. `fakegraph`'s contract hook therefore exempts that one
+  shape, with the citations, the same way it already exempts `$batch`.
+- **A redirect is not validated.** `GET /drives/{drive-id}/items/{driveItem-id}/content` answers 302 to a
+  pre-authenticated download URL (`driveitem-get-content.md`, "Response"), which the description does not model
+  (only 2XX/4XX/5XX), so the hook skips response validation for 3xx.
+- **The chat read paths use the `/chats/{chat-id}/...` form.** `chat-list-messages.md` also documents
+  `/me/chats/{chat-id}/messages`, but only the `/chats` form is in the committed route list; extending the list
+  would mean regenerating the trimmed spec for a second spelling of the same operation.
+- **`user search` asks for one property per request**: Graph takes one `startswith` per `$filter`, so the command
+  tries `displayName`, then `userPrincipalName`, then `mail`, and stops at the first non-empty result.
+- **`mentions` defaults to a 24 h window** and re-checks `createdDateTime` on the client; the KQL `sent>=` term is
+  a full UTC timestamp (PLAN.md:235). `--since` and `--until` on a channel read page until the window ends,
+  because that endpoint has no `$filter`.
+- **`file download` writes 0600 files and never replaces one without `--overwrite`** (a conflict is exit 1, not a
+  warning). A channel attachment is matched in the channel's files folder by name, then by URL; a chat attachment
+  that carries no drive id is reported rather than guessed at.
+- **A bug the new scripts found in `fakegraph`:** `searchTerms` was rendered as `null` for a query with no free
+  text, which the description does not allow. It now always renders an array.
+- **A live tenant caught what the fake let through: `$top` on `/me/joinedTeams`.** `ListJoinedTeams` sent
+  `$top=999` and a real tenant answered 400 `Query option 'Top' is not allowed`; the page for that route says
+  it supports **no** OData query parameters (`user-list-joinedteams.md:39`). Three things had to line up for it to
+  slip past a green suite, and all three are now closed: (1) the request was invented rather than read out of the
+  reference — the wrapper even cited the page that forbids it, which is the rule in AGENTS.md skipped; (2) the
+  Layer 6 contract check *blessed* it, because Microsoft's OpenAPI description declares `$top` on that operation
+  even though the service refuses it, so validating against the description cannot police query options; and
+  (3) `fakegraph` only policed the six options the spike had seen refused, and `$top` was not one of them, so
+  Layers 2 and 5 stayed green too. The fix is at the layer that owns the fact: `fakegraph` now has a
+  **documented query-option gate** (`internal/testing/fakegraph/queryoptions.go`) with one cited row per route,
+  refusing an undeclared option with the live wording; a test walks the whole route table and fails when a route
+  has no row, so a new endpoint has to decide what it accepts instead of accepting everything. The client now
+  sends no parameter there, and two tests that had encoded the bug (an assertion on `$top=999`, and a "$expand is
+  refused on /users" case the docs actually allow) were corrected rather than kept.
+- **A hang is not a slow listing: every request now has a deadline.** `chat list` on a real tenant produced no
+  output for minutes and, when the connection itself stalled, never returned at all: neither `http.DefaultClient`
+  nor `context.Background()` carries a timeout, and nothing was printed until the whole listing was fetched. Three
+  fixes, all behavioural: a per-attempt **60 s deadline** (`graph.DefaultTimeout`, also given to MSAL so a stalled
+  token refresh cannot hang first) that reports a `TimeoutError` with the fix; **every request, page and retry is
+  logged under `-v`**, plus a `fetching chats…` status line on stderr, so a slow call is visibly working; and
+  `chat list` now fetches **one page by default** (`--limit 50`) instead of paging the whole tenant with
+  `$expand=members` on every page — `--all` asks for that, and `--with`/`--unread` still page everything, because
+  the chat they are looking for may be older than the newest page.
+- **Two more routes are committed.** Phase 3 resolves people through the members of the user's chats and teams, so
+  `GET /teams/{team-id}/members` and `GET /chats/{chat-id}/members` joined the Layer 6 route list
+  (`team-list-members.md`, `chat-list-members.md`) and the trimmed spec and `routes.txt` were regenerated. Both were
+  documented but uncommitted, so the contract layer had been skipping them.
+- **Open for later phases:** `--json` search hits carry no body (batch-fetching them is Phase 4 work, and
+  `teams thread read <link>` is the documented workaround); `chat list --with` filters after the listing rather
+  than asking Graph for one chat; `file download` cannot reach a chat attachment in SharePoint; and the search
+  page cache PLAN.md mentions is not built (search is cheap enough to run once per command).
 
 ### Phase 4: Write
 `post`/`reply`/`edit`/`delete`/`react`, markdown and mentions, file and image attachments,

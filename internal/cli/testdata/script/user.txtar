@@ -1,0 +1,27 @@
+# user search and user show, including the person resolution order.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams user search Bob
+stdout 'Bob Builder'
+stdout 'bob@example.com'
+stdout 'Engineer'
+
+exec teams user search bob --json --jq '.[0].id'
+stdout '^user-2$'
+
+exec teams user show bob@example.com
+stdout 'name:.*Bob Builder'
+stdout 'upn:.*bob@example.com'
+
+# @name resolves through the members of the chats and teams first, so it works
+# without a directory lookup (PLAN.md:167).
+exec teams user show @yuki
+stdout 'Yuki Tanaka'
+stdout 'yuki@example.com'
+
+exec teams user show user-1 --json --jq '.displayName'
+stdout '^Alice Example$'
+
+! exec teams user show nobodyhere
+stderr 'no person matches'
+stderr 'teams user search'

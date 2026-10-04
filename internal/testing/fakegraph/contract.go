@@ -92,7 +92,39 @@ func (s *Server) validateContract(method, rel string, query url.Values, body []b
 	if strings.HasPrefix(rel, "/_") {
 		return
 	}
+	// A channel message's inline image is read through
+	// .../hostedContents/{id}/$value. The description declares that path (the
+	// /teams form is at refs/openapi/openapi/v1.0/openapi.yaml:734186), but the
+	// api-reference page that documents the operation lists only the container
+	// without the /$value suffix
+	// (refs/graph/api-reference/v1.0/api/chatmessagehostedcontent-get.md:53-58),
+	// so the Layer 6 route list cannot commit it and the trimmed description
+	// does not carry it. The fake still serves it, because the message body's own
+	// <img src="../hostedContents/1/$value"> reference needs it
+	// (refs/graph/api-reference/v1.0/api/chatmessage-post.md:731).
+	if isChannelHostedContentValue(rel) {
+		return
+	}
+	// A redirect is documented by the api-reference and not modeled by the
+	// description: GET /drives/{drive-id}/items/{driveItem-id}/content answers
+	// 302 to a pre-authenticated download URL
+	// (refs/graph/api-reference/v1.0/api/driveitem-get-content.md, "Response"),
+	// while the description declares only 2XX/4XX/5XX, so there is nothing to
+	// check.
+	if status >= 300 && status < 400 {
+		return
+	}
 	s.opts.Contract.validate(method, rel, query, body, status, resp)
+}
+
+// isChannelHostedContentValue reports whether rel is the channel form of the
+// hosted-content byte fetch, which the trimmed description cannot validate (see
+// validateContract).
+func isChannelHostedContentValue(rel string) bool {
+	if !strings.HasPrefix(rel, "/teams/") || !strings.HasSuffix(rel, "/$value") {
+		return false
+	}
+	return strings.Contains(rel, "/hostedContents/")
 }
 
 // Implements reports whether the fake serves an api-reference route template

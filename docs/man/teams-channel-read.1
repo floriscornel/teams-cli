@@ -1,0 +1,86 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-channel-read - Read a channel's root messages
+
+
+.SH SYNOPSIS
+\fBteams channel read  [flags]\fP
+
+
+.SH DESCRIPTION
+Read a channel's messages. --since and --until are applied on the client:
+the channel message endpoint supports only $top and $expand, and $filter is a
+400 rather than a silent ignore, so the CLI pages the listing and stops at the
+first thread older than the window (PLAN.md:187).
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	fetch every page instead of --limit
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for read
+
+.PP
+\fB--limit\fP=20
+	maximum number of messages (newest first)
+
+.PP
+\fB--replies\fP[=false]
+	include each thread's replies
+
+.PP
+\fB--since\fP=""
+	only messages newer than this (a duration like 24h, or a timestamp)
+
+.PP
+\fB--team\fP=""
+	team the channel belongs to (when the reference does not say)
+
+.PP
+\fB--until\fP=""
+	only messages older than this (a duration like 24h, or a timestamp)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-channel(1)\fP

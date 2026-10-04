@@ -1,0 +1,38 @@
+# chat list/show/read, including the person form and the read watermark.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams chat list
+stdout 'Release train'
+stdout 'Bob Builder'
+stdout '19:bob@thread.v2'
+stdout 'TITLE'
+
+exec teams chat list --unread
+stdout 'Release train'
+! stdout '19:bob@thread.v2'
+
+exec teams chat list --topic release
+stdout 'Release train'
+
+exec teams chat list --with bob@example.com --json --jq '.[0].id'
+stdout '^19:bob@thread.v2$'
+
+exec teams chat show 'Release train'
+stdout 'title:.*Release train'
+stdout 'Bob Builder'
+
+exec teams chat read 19:bob@thread.v2
+stdout 'Bob Builder'
+stdout 'lunch?'
+stdout 'sure, at 12'
+
+# @person resolves to the 1:1 chat through the members scan (PLAN.md:166).
+exec teams chat read @bob
+stdout 'lunch?'
+
+exec teams chat read @bob --from bob@example.com --json --jq '.[0].id'
+stdout '^c-1$'
+
+# A chat topic that matches several chats is a usage error off a TTY.
+exec teams chat read 19:release-train@thread.v2 --since 2h
+stdout 'ship it'

@@ -56,6 +56,16 @@ func (a *App) newCacheInfoCmd() *cobra.Command {
 				return err
 			}
 			now := a.Clock.Now()
+			// The entity cache is the one rebuildable file whose entry count is worth
+			// reporting: it is what name resolution reads and writes (PLAN.md:260).
+			entityCache, cacheErr := store.LoadEntities(paths.EntityCacheFile())
+			if cacheErr != nil {
+				return output.Errorf("%v", cacheErr)
+			}
+			if problem := entityCache.Problem(); problem != nil {
+				a.Printer.Warnf("entity cache: %v; it will be rebuilt on the next lookup", problem)
+			}
+			cacheStats := entityCache.Stats(now)
 			entries := make([]cacheEntry, 0, len(paths.Locations()))
 			for _, loc := range paths.Locations() {
 				st := store.Scan(loc.Path, loc.Dir)
@@ -89,7 +99,8 @@ func (a *App) newCacheInfoCmd() *cobra.Command {
 						"metadata":    paths.AuthMetadataFile(),
 						"entity_file": paths.EntityCacheFile(),
 					},
-					"entries": entries,
+					"entity_entries": cacheStats.Entries,
+					"entries":        entries,
 				})
 			}
 			a.Printer.Definitions([][2]string{
@@ -120,10 +131,13 @@ func (a *App) newCacheInfoCmd() *cobra.Command {
 			a.Printer.Table([]string{"KIND", "WHAT", "ENTRIES", "SIZE", "AGE", "PATH"}, rows)
 			// The entity cache is the one entry with a TTL, so its age is called
 			// out explicitly (PLAN.md: "plus the age of the entity cache").
-			if st := store.Scan(paths.EntityCacheFile(), false); st.Exists {
-				a.Printer.Statusf("entity cache age: %s", output.HumanAge(now, st.Newest))
-			} else {
-				a.Printer.Statusf("entity cache: not created yet")
+			switch {
+			case cacheStats.Entries == 0:
+				a.Printer.Statusf("entity cache: empty")
+			case cacheStats.Oldest.IsZero():
+				a.Printer.Statusf("entity cache: %d entries", cacheStats.Entries)
+			default:
+				a.Printer.Statusf("entity cache: %d entries, oldest %s", cacheStats.Entries, output.HumanAge(now, cacheStats.Oldest))
 			}
 			return nil
 		},

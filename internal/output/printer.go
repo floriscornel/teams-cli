@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,9 +15,12 @@ import (
 // Options configures a Printer. The CLI fills it from global flags plus TTY
 // detection; tests construct it directly.
 type Options struct {
-	Out         io.Writer
-	Err         io.Writer
-	JSON        bool
+	Out  io.Writer
+	Err  io.Writer
+	JSON bool
+	// JQ is a jq expression applied to the JSON output. Setting it implies
+	// JSON mode, so --jq alone is enough.
+	JQ          string
 	NoColor     bool
 	Quiet       bool
 	Verbose     int
@@ -29,6 +33,7 @@ type Printer struct {
 	out     io.Writer
 	err     io.Writer
 	json    bool
+	jq      string
 	color   bool
 	quiet   bool
 	verbose int
@@ -63,6 +68,7 @@ func New(opts Options) *Printer {
 		out:     opts.Out,
 		err:     opts.Err,
 		json:    opts.JSON,
+		jq:      opts.JQ,
 		color:   color,
 		quiet:   opts.Quiet,
 		verbose: opts.Verbose,
@@ -83,8 +89,11 @@ func (p *Printer) Out() io.Writer { return p.out }
 // Err returns the stderr stream.
 func (p *Printer) Err() io.Writer { return p.err }
 
-// JSONMode reports whether --json was requested.
-func (p *Printer) JSONMode() bool { return p.json }
+// JSONMode reports whether --json or --jq was requested.
+func (p *Printer) JSONMode() bool { return p.json || p.jq != "" }
+
+// JQ returns the --jq expression, or "".
+func (p *Printer) JQ() string { return p.jq }
 
 // Color reports whether styled output is enabled.
 func (p *Printer) Color() bool { return p.color }
@@ -159,11 +168,18 @@ func (p *Printer) ReportError(err error) {
 // JSON encodes v to stdout with a stable two-space indent. It is the only
 // output path that is a documented schema, so it never contains styling.
 func (p *Printer) JSON(v any) error {
-	enc := json.NewEncoder(p.out)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
 		return &Error{Code: CodeError, Msg: "encode JSON output", Err: err}
+	}
+	if p.jq != "" {
+		return ApplyJQ(p.out, p.jq, buf.Bytes())
+	}
+	if _, err := p.out.Write(buf.Bytes()); err != nil {
+		return &Error{Code: CodeError, Msg: "write JSON output", Err: err}
 	}
 	return nil
 }
@@ -202,6 +218,13 @@ func (p *Printer) yellow(s string) string {
 	}
 	return p.styles.yellow.Render(s)
 }
+
+// Bold renders s bold on a terminal and unchanged otherwise, so a caller does
+// not have to know whether styling is on.
+func (p *Printer) Bold(s string) string { return p.bold(s) }
+
+// Dim renders s faint on a terminal and unchanged otherwise.
+func (p *Printer) Dim(s string) string { return p.dim(s) }
 
 // Successf prints a short confirmation with a green check on a TTY.
 func (p *Printer) Successf(format string, args ...any) {

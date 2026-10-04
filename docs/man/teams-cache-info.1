@@ -19,6 +19,10 @@ List every local path with its size, entry count and age
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
 \fB--json\fP[=false]
 	machine-readable JSON output
 
@@ -41,6 +45,10 @@ List every local path with its size, entry count and age
 .PP
 \fB--read-only\fP[=false]
 	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
 
 .PP
 \fB-v\fP, \fB--verbose\fP[=0]

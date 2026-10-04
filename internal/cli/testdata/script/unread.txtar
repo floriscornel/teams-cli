@@ -1,0 +1,18 @@
+# unread: chats from viewpoint.lastMessageReadDateTime plus mentions.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams unread
+stdout 'unread chats: 1'
+stdout 'Release train'
+stdout 'mentions: 1'
+stdout 'release notes'
+
+exec teams unread --json --jq '.chats[0].id'
+stdout '^19:release-train@thread.v2$'
+
+exec teams unread --chats
+stdout 'unread chats: 1'
+! stdout 'mentions:'
+
+exec teams unread --mentions --since 1h --json --jq '.mentions | length'
+stdout '^1$'

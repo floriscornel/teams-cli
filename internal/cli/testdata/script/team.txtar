@@ -1,0 +1,33 @@
+# team list and team show: names, ids, JSON and jq.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams team list
+stdout 'Engineering'
+stdout 'team-eng'
+stdout 'NAME'
+
+exec teams team list --json --jq '.[0].displayName'
+stdout '^Engineering$'
+
+exec teams team show Engineering
+stdout 'name:.*Engineering'
+stdout 'visibility:.*public'
+stdout 'Where the work happens'
+
+# A name matches case-insensitively: the entity cache records the typed name
+# (PLAN.md:170), so the second lookup hits it.
+exec teams team show engineering
+stdout 'Engineering'
+
+# A channel link carries the team id in its groupId parameter, so no name lookup
+# is needed at all.
+exec teams team show 'https://teams.microsoft.com/l/channel/19%3Ageneral%40thread.tacv2/General?groupId=team-eng'
+stdout 'Engineering'
+
+! exec teams team show Nonexistent
+stderr 'no team matches "Nonexistent"'
+stderr 'hint:'
+
+# A GUID is taken as a team id, and a wrong one is a Graph 404 (exit 4).
+! exec teams team show 11111111-1111-1111-1111-111111111111
+stderr 'not found'

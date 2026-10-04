@@ -1,0 +1,102 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-search - Search Teams messages
+
+
+.SH SYNOPSIS
+\fBteams search  [flags]\fP
+
+
+.SH DESCRIPTION
+Search Teams messages with KQL. The documented scope terms are available
+through flags (--from, --to, --mentions-me, --has-attachment) and inline in
+, so from:bob sent>2026-10-01 keeps working.
+
+.PP
+A hit carries no message body: Graph returns the id, the sender, the
+timestamps, the subject and a web link (docs/spike/phase1.md:83).
+Use \fBteams thread read <link>\fR for the text.
+
+
+.SH OPTIONS
+\fB--from\fP=""
+	only messages sent by this person (from:)
+
+.PP
+\fB--has-attachment\fP[=false]
+	only messages with attachments
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for search
+
+.PP
+\fB--in\fP=""
+	only messages in this channel or chat
+
+.PP
+\fB--limit\fP=25
+	results per page (the API allows up to 50)
+
+.PP
+\fB--mentions-me\fP[=false]
+	only messages that mention you
+
+.PP
+\fB--page\fP=1
+	1-based page number (the search API pages by from/size)
+
+.PP
+\fB--since\fP=""
+	only messages newer than this (a duration like 7d, or a timestamp)
+
+.PP
+\fB--to\fP=""
+	only messages sent to this person (to:, 1:1 chats only)
+
+.PP
+\fB--until\fP=""
+	only messages older than this (a duration like 7d, or a timestamp)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP

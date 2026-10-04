@@ -32,6 +32,7 @@ import (
 	"github.com/floriscornel/teams-cli/internal/clock"
 	"github.com/floriscornel/teams-cli/internal/cloud"
 	"github.com/floriscornel/teams-cli/internal/config"
+	"github.com/floriscornel/teams-cli/internal/graph"
 	"github.com/floriscornel/teams-cli/internal/output"
 	"github.com/floriscornel/teams-cli/internal/store"
 )
@@ -182,7 +183,10 @@ func New(_ context.Context, opts Options) (*Client, error) {
 // the default here removes the possibility instead of guarding each call site.
 func msalHTTPClientFor(hc *http.Client) *http.Client {
 	if hc == nil {
-		return http.DefaultClient
+		// http.DefaultClient has no timeout, and neither does the context a
+		// command starts with, so a stalled Entra call would hang the CLI
+		// before the first Graph request. Same bound as the Graph client.
+		return &http.Client{Timeout: graph.DefaultTimeout}
 	}
 	return hc
 }

@@ -1,0 +1,15 @@
+# Read-only mode allows every read command; the person form of a chat reference
+# resolves through the members scan, which is a read (PLAN.md:166).
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams --read-only team list
+stdout 'Engineering'
+
+exec teams --read-only channel read Engineering/General --limit 1
+stdout 'Hello @Yuki Tanaka'
+
+exec teams --read-only chat read @bob
+stdout 'lunch?'
+
+exec teams --read-only search deploy
+stdout 'deploy notes'

@@ -1,0 +1,79 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-chat-list - List your chats, newest activity first
+
+
+.SH SYNOPSIS
+\fBteams chat list [flags]\fP
+
+
+.SH DESCRIPTION
+List your chats, newest activity first
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	page through every chat (slow on a busy tenant: each page expands the members)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for list
+
+.PP
+\fB--limit\fP=50
+	maximum number of chats, newest first
+
+.PP
+\fB--topic\fP=""
+	only chats whose topic contains this text
+
+.PP
+\fB--unread\fP[=false]
+	only chats with unread messages
+
+.PP
+\fB--with\fP=""
+	only the 1:1 chat with this person
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-chat(1)\fP

@@ -483,11 +483,17 @@ func TestUserChatsRoute(t *testing.T) {
 	}
 }
 
-func TestUnsupportedExpandOnUserList(t *testing.T) {
+// $skip is the option user-list.md names as unsupported ("$skip isn't supported"),
+// while $expand is documented there for open extensions. The query-option gate
+// follows the page, so $skip is refused and $expand is not.
+func TestUnsupportedSkipOnUserList(t *testing.T) {
 	srv := newTestServer(t)
 	c := newClient(t, srv)
-	if _, err := graph.GetPage[map[string]any](context.Background(), c, "/users", url.Values{"$expand": {"manager"}}); errStatus(err) != 400 {
+	if _, err := graph.GetPage[map[string]any](context.Background(), c, "/users", url.Values{"$skip": {"5"}}); errStatus(err) != 400 {
 		t.Fatalf("err = %v, want 400", err)
+	}
+	if _, err := graph.GetPage[map[string]any](context.Background(), c, "/users", url.Values{"$expand": {"extensions"}}); err != nil {
+		t.Fatalf("$expand on /users = %v, want the documented option accepted", err)
 	}
 }
 

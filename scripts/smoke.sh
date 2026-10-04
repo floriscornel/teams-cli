@@ -46,7 +46,7 @@ esac
 
 # 2. Help lists the user-facing commands.
 help_output=$("$binary" --help)
-for command in auth cache config doctor profile whoami; do
+for command in auth cache config doctor profile whoami team channel chat thread search mentions user unread file alias; do
   case "$help_output" in
     *"$command"*) ;;
     *) fail "--help does not list $command" ;;
@@ -65,13 +65,31 @@ case "$status_output" in
   *) fail "auth status did not explain the missing account: $status_output" ;;
 esac
 
-# 4. Usage errors exit 2.
+# 4. Usage errors exit 2, and a read command without an account is an auth
+#    failure (exit 3) rather than a crash or a prompt.
 set +e
 "$binary" no-such-command >/dev/null 2>&1
 usage_code=$?
 set -e
 [ "$usage_code" -eq 2 ] || fail "an unknown command exited $usage_code, want 2"
 pass "usage errors exit 2"
+
+set +e
+"$binary" team list >/dev/null 2>&1
+read_code=$?
+set -e
+[ "$read_code" -eq 3 ] || fail "team list without an account exited $read_code, want 3"
+pass "read commands require an account (exit 3)"
+
+# 4b. A reference that cannot identify a message is a usage error with a hint.
+set +e
+ref_output=$("$binary" thread read not-a-message 2>&1)
+ref_code=$?
+set -e
+case "$ref_code:$ref_output" in
+  2:*"hint:"*) pass "an unusable reference exits 2 with a hint" ;;
+  *) fail "an unusable reference exited $ref_code: $ref_output" ;;
+esac
 
 # 5. Config round trip, written 0600.
 "$binary" config set profiles.bot.tenant colorkrew.com >/dev/null

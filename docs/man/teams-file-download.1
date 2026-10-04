@@ -1,0 +1,78 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-file-download - Download a message's attachments and inline images
+
+
+.SH SYNOPSIS
+\fBteams file download  [flags]\fP
+
+
+.SH DESCRIPTION
+Download the files a message carries into a directory (the current one by
+default). Files are written 0600, and an existing file is never replaced
+unless --overwrite is passed. --name filters by file name, --no-images
+skips the inline images, -o chooses the directory.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for download
+
+.PP
+\fB--name\fP=""
+	only download attachments whose name contains this text
+
+.PP
+\fB--no-images\fP[=false]
+	skip the message's inline images
+
+.PP
+\fB-o\fP, \fB--output\fP="."
+	directory to write the files into
+
+.PP
+\fB--overwrite\fP[=false]
+	replace files that already exist
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-file(1)\fP

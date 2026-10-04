@@ -1,0 +1,34 @@
+{
+  // This repository deliberately keeps the Go and mise caches inside the
+  // checkout (mise.toml: "Go caches stay inside the checkout so a sandboxed
+  // runner works unchanged"), and refs/ is a gitignored 114 MB mirror.
+  // Together that is ~120k files, and a single `mise run cover` rewrites
+  // thousands of them, so VS Code's file watcher and its ripgrep-backed search
+  // run at full CPU for minutes. None of it is source, so it is hidden from the
+  // explorer, the watcher, search and gopls. Use `rg` in the terminal for refs/
+  // (AGENTS.md asks for that anyway).
+  "files.watcherExclude": {
+    "**/.cache/**": true,
+    "**/refs/**": true,
+    "**/bin/**": true,
+    "**/dist/**": true,
+    "**/coverage.out": true
+  },
+  "search.exclude": {
+    "**/.cache/**": true,
+    "**/refs/**": true,
+    "**/bin/**": true,
+    "**/dist/**": true,
+    "**/coverage.out": true
+  },
+  "files.exclude": {
+    "**/.cache": true,
+    "**/bin": true,
+    "**/dist": true
+  },
+  // gopls walks the workspace by default; the module cache and the doc mirror
+  // are not workspace packages.
+  "gopls": {
+    "build.directoryFilters": ["-.cache", "-refs", "-bin", "-dist"]
+  }
+}

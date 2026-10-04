@@ -1,0 +1,39 @@
+# search: KQL from flags and free text, paging, and the hit table.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams search deploy
+stdout 'Bob Builder'
+stdout 'deploy notes'
+stdout 'channel 19:general@thread.tacv2'
+stderr 'match\(es\) in total'
+
+# A hit carries no body: the JSON is the resource Graph returned.
+exec teams search deploy --json --jq '.hits[0].resource.id'
+stdout '^m-1001$'
+
+exec teams search 'deploy notes' --from bob@example.com --json --jq '.total'
+stdout '^1$'
+
+# --in narrows the hits to one channel or one chat.
+exec teams search deploy --in Engineering/General --json --jq '.total'
+stdout '^2$'
+
+exec teams search deploy --in 19:bob@thread.v2
+stderr 'no matches'
+
+exec teams search v0.2 --since 1h
+stdout 'v0.2 is out.'
+
+# Paging is from/size: page 1 is what a script gets by default.
+exec teams search deploy --limit 1 --json --jq '.hits | length'
+stdout '^1$'
+
+exec teams search deploy --limit 1 --page 2 --json --jq '.hits[0].resource.id'
+stdout '^m-1002$'
+
+# A search may be nothing but flags: hasAttachment:true alone is a query.
+exec teams search --has-attachment
+stdout 'deploy notes'
+
+! exec teams search
+stderr 'nothing to search for'

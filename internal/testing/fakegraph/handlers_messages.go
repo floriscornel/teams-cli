@@ -68,10 +68,6 @@ type reactionWireRequest struct {
 // its newest reply (docs/spike/phase1.md:55). Sorting is deterministic, with
 // the message id as the tie-break.
 func handleChannelMessages(c *handlerCtx) {
-	if err := rejectUnsupported(c.query, "$top", "$expand"); err != nil {
-		c.fail(err)
-		return
-	}
 	st := c.s.st
 	st.mu.RLock()
 	defer st.mu.RUnlock()
@@ -121,10 +117,6 @@ func handleChannelMessage(c *handlerCtx) {
 // is supported and its maximum is 50
 // (refs/graph/api-reference/v1.0/api/chatmessage-list-replies.md:30).
 func handleReplies(c *handlerCtx) {
-	if err := rejectUnsupported(c.query, "$top"); err != nil {
-		c.fail(err)
-		return
-	}
 	st := c.s.st
 	st.mu.RLock()
 	defer st.mu.RUnlock()

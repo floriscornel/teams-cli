@@ -1,0 +1,83 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-chat-read - Read a chat's messages
+
+
+.SH SYNOPSIS
+\fBteams chat read  [flags]\fP
+
+
+.SH DESCRIPTION
+Read a chat's messages. --since and --until are applied on the server: the
+chat message endpoint documents $orderby and a $filter with gt/lt on one date
+property, and a $filter that does not match the $orderby is silently ignored -
+so --since uses lastModifiedDateTime gt and the result is re-checked on
+createdDateTime on the client (PLAN.md:183).
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	fetch every page instead of --limit
+
+.PP
+\fB--from\fP=""
+	only messages sent by this person
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for read
+
+.PP
+\fB--limit\fP=20
+	maximum number of messages (newest first)
+
+.PP
+\fB--since\fP=""
+	only messages newer than this (a duration like 24h, or a timestamp)
+
+.PP
+\fB--until\fP=""
+	only messages older than this (a duration like 24h, or a timestamp)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-chat(1)\fP

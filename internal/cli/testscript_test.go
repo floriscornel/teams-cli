@@ -1,25 +1,30 @@
 // Package cli_test holds the Layer 5 end-to-end tests: real CLI invocations
 // driven by testdata/script/*.txtar against in-process fakes.
 //
-// The command under test is the real `teams` binary's code path: testscript
+// The command under test is the real teams binary's code path: testscript
 // re-executes this test binary with argv[0] == "teams", and runTeams then calls
 // cli.MainWith on the real App. The fakes are injected through the App's Hooks,
 // never through a flag or an environment variable that a release build would
 // look at (PLAN.md: "No test override in shipped binaries").
+//
+// The Graph fake is the Layer 2 stateful server (internal/testing/fakegraph), so
+// the scripts exercise the real request shapes against a server that implements
+// the documented query limits, and every request and response is validated
+// against the vendored OpenAPI subset (PLAN.md Layer 6) through the contract
+// hook.
 package cli_test
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/floriscornel/teams-cli/internal/cli"
+	"github.com/floriscornel/teams-cli/internal/testing/fakegraph"
 )
 
 // Environment variables the parent process uses to hand the fakes to the child.
@@ -31,7 +36,7 @@ const (
 func TestMain(m *testing.M) {
 	// Keep the CLI tests (and the testscript subprocesses) away from the real OS
 	// keychain: the envelope store's keychain item name is fixed, so a test that
-	// reached it could read — or delete — a live data key.
+	// reached it could read - or delete - a live data key.
 	if os.Getenv("TEAMS_TEST_ALLOW_KEYCHAIN") == "" {
 		_ = os.Setenv("TEAMS_NO_KEYCHAIN", "1")
 	}
@@ -41,7 +46,7 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// runTeams is the in-process `teams` command the scripts invoke.
+// runTeams is the in-process teams command the scripts invoke.
 func runTeams() {
 	app := cli.New(os.Stdin, os.Stdout, os.Stderr)
 	app.SetHooks(cli.Hooks{
@@ -56,7 +61,12 @@ func runTeams() {
 }
 
 func TestScripts(t *testing.T) {
-	graph := newFakeGraph(t)
+	graph := fakegraph.New(t, fakegraph.Options{
+		Model: scriptsModel(time.Now().UTC().Truncate(time.Second)),
+		// Layer 6: every request and response these scripts produce is checked
+		// against the trimmed Graph OpenAPI description.
+		Contract: fakegraph.WithContract(t),
+	})
 	testscript.Run(t, testscript.Params{
 		Dir: filepath.Join("testdata", "script"),
 		Setup: func(e *testscript.Env) error {
@@ -71,8 +81,8 @@ func TestScripts(t *testing.T) {
 			e.Setenv("TEAMS_CONFIG", filepath.Join(e.WorkDir, "config.toml"))
 			e.Setenv("TEAMS_STATE_DIR", filepath.Join(e.WorkDir, "state"))
 			e.Setenv("TEAMS_CACHE_DIR", filepath.Join(e.WorkDir, "cache"))
-			e.Setenv("TEAMS_TEST_GRAPH_URL", graph.URL+"/v1.0")
-			e.Setenv("TEAMS_TEST_AUTHORITY", graph.URL+"/tenant")
+			e.Setenv("TEAMS_TEST_GRAPH_URL", graph.URL())
+			e.Setenv("TEAMS_TEST_AUTHORITY", graph.URL()+"/tenant")
 			// Deterministic, unstyled output.
 			e.Setenv("NO_COLOR", "1")
 			e.Setenv("TERM", "dumb")
@@ -90,35 +100,116 @@ func TestScripts(t *testing.T) {
 	})
 }
 
-// fakeGraph is the smallest Graph the Phase 2 commands need: /me for whoami and
-// doctor. Layer 2's internal/testing/fakegraph replaces it as the surface grows,
-// and the contract validator will check these routes against the vendored OpenAPI
-// subset.
-type fakeServer struct {
-	*httptest.Server
-	requests []string
+// tokenPrefix is the header of the unsigned test tokens the scripts use; the
+// fake reads the scp claim out of the payload, exactly as it reads a real one.
+//
+// scriptsModel is the seed every script runs against. Times are relative to the
+// moment the test starts, so a --since duration in a script keeps its meaning
+// whatever the wall clock says.
+func scriptsModel(now time.Time) fakegraph.Model {
+	generalID := "19:general@thread.tacv2"
+	releasesID := "19:releases@thread.tacv2"
+	return fakegraph.Model{
+		Me: "user-1",
+		Users: []fakegraph.User{
+			{ID: "user-1", DisplayName: "Alice Example", UserPrincipalName: "alice@example.com", Mail: "alice@example.com"},
+			{ID: "user-2", DisplayName: "Bob Builder", UserPrincipalName: "bob@example.com", Mail: "bob@example.com", JobTitle: "Engineer", Relevance: 0.9},
+			{ID: "user-3", DisplayName: "Yuki Tanaka", UserPrincipalName: "yuki@example.com", Mail: "yuki@example.com", JobTitle: "Manager", Relevance: 0.4},
+		},
+		Teams: []fakegraph.Team{{
+			ID:          "team-eng",
+			DisplayName: "Engineering",
+			Description: "Where the work happens",
+			Channels: []fakegraph.Channel{
+				{
+					ID: generalID, DisplayName: "General",
+					DriveID: "drive-eng", FilesFolderID: "folder-general",
+					Messages: []fakegraph.Message{
+						{
+							ID: "m-1001", AuthorID: "user-2", Created: now.Add(-3 * time.Hour),
+							Body: "<p>Morning all, the deploy notes are attached.</p>",
+							Attachments: []fakegraph.Attachment{{
+								ID: "att-1", Name: "deploy-notes.md", ContentType: "text/markdown",
+								ContentURL: "https://example.sharepoint.com/deploy-notes.md",
+							}},
+						},
+						{
+							ID: "m-1002", AuthorID: "user-1", Created: now.Add(-2 * time.Hour),
+							Subject: "Deploy",
+							Body: "<p>Hello <at id=\"0\">Yuki Tanaka</at>, can you review the deploy?</p>" +
+								"<p><img src=\"../hostedContents/1/$value\" alt=\"chart\"></p>",
+							Mentions: []fakegraph.Mention{{
+								ID: 0, Text: "Yuki Tanaka", UserID: "user-3",
+								UserDisplayName: "Yuki Tanaka", UserIdentityType: "aadUser",
+							}},
+							Reactions: []fakegraph.Reaction{
+								{Type: "👍", UserID: "user-3", Created: now.Add(-time.Hour)},
+								{Type: "👍", UserID: "user-2", Created: now.Add(-time.Hour)},
+							},
+							HostedContents: []fakegraph.HostedContent{{
+								ID: "1", ContentType: "image/png", Content: []byte("fake-png-bytes"),
+							}},
+							Replies: []fakegraph.Message{{
+								ID: "m-1003", AuthorID: "user-3", Created: now.Add(-90 * time.Minute),
+								Body: "<p>On it.</p>",
+							}},
+						},
+					},
+				},
+				{
+					ID: releasesID, DisplayName: "Releases",
+					Messages: []fakegraph.Message{
+						{
+							ID: "m-2001", AuthorID: "user-2", Created: now.Add(-30 * time.Minute),
+							Body: "<p>v0.2 is out.</p>",
+						},
+						{
+							ID: "m-2002", AuthorID: "user-2", Created: now.Add(-20 * time.Minute),
+							Body: "<p>cc <at id=\"0\">Alice Example</at> for the release notes</p>",
+							Mentions: []fakegraph.Mention{{
+								ID: 0, Text: "Alice Example", UserID: "user-1",
+								UserDisplayName: "Alice Example", UserIdentityType: "aadUser",
+							}},
+						},
+					},
+				},
+			},
+		}},
+		Chats: []fakegraph.Chat{
+			{
+				ID: "19:bob@thread.v2", ChatType: fakegraph.ChatTypeOneOnOne,
+				Members: []fakegraph.Member{{UserID: "user-1"}, {UserID: "user-2"}},
+				// Read: the newest message (-3h) is older than the watermark.
+				LastRead: now.Add(-time.Hour),
+				Messages: []fakegraph.Message{
+					{ID: "c-1", AuthorID: "user-2", Created: now.Add(-4 * time.Hour), Body: "<p>lunch?</p>"},
+					{ID: "c-2", AuthorID: "user-1", Created: now.Add(-3 * time.Hour), Body: "<p>sure, at 12</p>"},
+				},
+			},
+			{
+				ID: "19:release-train@thread.v2", ChatType: fakegraph.ChatTypeGroup, Topic: "Release train",
+				Members: []fakegraph.Member{{UserID: "user-1"}, {UserID: "user-2"}, {UserID: "user-3"}},
+				// Unread: the newest message (-45m) is newer than the watermark.
+				LastRead: now.Add(-60 * time.Minute),
+				Messages: []fakegraph.Message{
+					{ID: "c-3", AuthorID: "user-3", Created: now.Add(-45 * time.Minute), Body: "<p>ship it</p>"},
+				},
+			},
+		},
+		Drives: []fakegraph.Drive{{
+			ID: "drive-eng",
+			Items: []fakegraph.DriveItem{
+				{ID: "item-1", Name: "deploy-notes.md", ParentID: "folder-general", Content: []byte("# deploy\n"), ContentType: "text/markdown", Created: now.Add(-4 * time.Hour)},
+				{ID: "item-2", Name: "archive", ParentID: "folder-general", Folder: true, Created: now.Add(-40 * time.Hour)},
+			},
+		}},
+	}
 }
 
-func newFakeGraph(t *testing.T) *fakeServer {
-	t.Helper()
-	f := &fakeServer{}
-	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.requests = append(f.requests, r.Method+" "+r.URL.Path)
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/me"):
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"id":"user-1","displayName":"Alice Example","userPrincipalName":"alice@example.com","mail":"alice@example.com"}`))
-		case strings.HasSuffix(r.URL.Path, "/me/chats"):
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"value":[]}`))
-		default:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]any{"code": "NotFound", "message": "no route in the fake for " + r.URL.Path},
-			})
-		}
-	}))
-	t.Cleanup(f.Close)
-	return f
-}
+// scriptsToken is the scope set the scripts' tokens carry: every read scope
+// Phase 3 needs, including the admin-consent ones the fake grants by default.
+const scriptsToken = "User.Read User.ReadBasic.All Team.ReadBasic.All TeamMember.Read.All Channel.ReadBasic.All ChannelMessage.Read.All Chat.Read Chat.ReadBasic Files.Read.All People.Read"
+
+// ensureUTF8 is a compile-time guard that the seed's HTML carries no invalid
+// runes, which would make the scripted output depend on the locale.
+var _ = func() bool { return utf8.ValidString(scriptsToken) }

@@ -28,6 +28,14 @@ import (
 // (refs/graph/concepts/throttling.md:82-95). Jitter is our choice: the mirror
 // documents none.
 const (
+	// DefaultTimeout bounds ONE request attempt: connect, TLS, request, response
+	// body. Without it a stalled connection - a VPN handoff, a proxy that accepts
+	// and never answers, a dropped SYN - blocks the CLI forever, because neither
+	// http.DefaultClient nor context.Background() has a deadline. Graph documents
+	// no per-request timeout; 60s is generous for a single page of messages and
+	// still short enough that a user sees an error instead of a mystery hang.
+	DefaultTimeout = 60 * time.Second
+
 	DefaultMaxRetries  = 3
 	DefaultBaseDelay   = 500 * time.Millisecond
 	DefaultMaxDelay    = 8 * time.Second
@@ -75,6 +83,12 @@ type Options struct {
 	// MaxRetries defaults to DefaultMaxRetries; a negative value disables
 	// retries.
 	MaxRetries int
+	// Timeout bounds one request attempt; it defaults to DefaultTimeout and a
+	// negative value disables the bound (tests that drive a fake do that).
+	Timeout time.Duration
+	// Logger receives one line per request attempt and per page when set. The
+	// CLI wires it to -v, so a slow call is visible instead of looking hung.
+	Logger func(format string, args ...any)
 	// Clock is used for bookkeeping; defaults to the system clock.
 	Clock clock.Clock
 	// Sleeper defaults to a real timer. Tests inject a no-op.
@@ -96,6 +110,8 @@ type Client struct {
 	http          *http.Client
 	userAgent     string
 	maxRetries    int
+	timeout       time.Duration
+	logf          func(format string, args ...any)
 	clk           clock.Clock
 	sleep         Sleeper
 	recorder      Recorder
@@ -115,9 +131,22 @@ func New(opts Options) (*Client, error) {
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("graph: invalid BaseURL %q", opts.BaseURL)
 	}
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = DefaultTimeout
+	}
+	if timeout < 0 {
+		timeout = 0
+	}
+	logf := opts.Logger
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
 	hc := opts.HTTPClient
 	if hc == nil {
-		hc = http.DefaultClient
+		// Belt and braces with the per-attempt deadline below: the client timeout
+		// also covers a response body that trickles in forever.
+		hc = &http.Client{Timeout: timeout}
 	}
 	clk := opts.Clock
 	if clk == nil {
@@ -158,6 +187,8 @@ func New(opts Options) (*Client, error) {
 		http:          hc,
 		userAgent:     ua,
 		maxRetries:    maxRetries,
+		timeout:       timeout,
+		logf:          logf,
 		clk:           clk,
 		sleep:         sleep,
 		recorder:      opts.Recorder,
@@ -182,6 +213,18 @@ type Request struct {
 	Body any
 	// Header carries per-request headers (Prefer, Content-Type overrides).
 	Header http.Header
+}
+
+// DisplayPath renders the request target for a log line: the Graph path when the
+// caller used one, otherwise the URL without its query string.
+func (r Request) DisplayPath() string {
+	if !strings.HasPrefix(r.Path, "http://") && !strings.HasPrefix(r.Path, "https://") {
+		return r.Path
+	}
+	if i := strings.IndexByte(r.Path, '?'); i >= 0 {
+		return r.Path[:i]
+	}
+	return r.Path
 }
 
 // Response is a decoded-but-unparsed Graph response.
@@ -238,6 +281,7 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 			if !ok {
 				break
 			}
+			c.logf("retrying %s %s in %s (%v)", req.Method, req.DisplayPath(), delay.Round(time.Millisecond), lastErr)
 			if err := c.sleep(ctx, delay); err != nil {
 				return nil, err
 			}
@@ -307,6 +351,14 @@ func jitter(d time.Duration) time.Duration {
 }
 
 func (c *Client) attempt(ctx context.Context, req Request, urlStr string, body []byte) (*Response, error) {
+	// The deadline is per attempt, not per call: a Retry-After sleep between two
+	// attempts must not eat the budget of the attempt that follows it.
+	if c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+	started := c.clk.Now()
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -336,9 +388,20 @@ func (c *Client) attempt(ctx context.Context, req Request, urlStr string, body [
 		c.recorder.RecordRequest(httpReq, body)
 	}
 
+	// Log before the call: this is the line that tells a user the CLI is waiting on
+	// the network rather than stuck, which is the whole point of -v here.
+	c.logf("%s %s ...", req.Method, req.DisplayPath())
 	httpResp, err := c.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%s %s: %w", req.Method, urlStr, err)
+		// Log the failure before returning: a timeout looks exactly like a hang
+		// from the outside, and -v is how a user tells the two apart.
+		c.logf("%s %s failed after %s: %v", req.Method, req.DisplayPath(), c.clk.Now().Sub(started).Round(time.Millisecond), err)
+		// http.Client.Do already reports the method and URL, so only the short
+		// path is added back; a timeout is wrapped so it can carry the fix.
+		if isTimeout(err) {
+			return nil, fmt.Errorf("%s %s: %w", req.Method, req.DisplayPath(), &TimeoutError{Err: err, After: c.timeout})
+		}
+		return nil, fmt.Errorf("%s %s: %w", req.Method, req.DisplayPath(), err)
 	}
 	defer func() { _ = httpResp.Body.Close() }()
 	respBody, readErr := io.ReadAll(httpResp.Body)
@@ -348,6 +411,8 @@ func (c *Client) attempt(ctx context.Context, req Request, urlStr string, body [
 	if readErr != nil {
 		return nil, fmt.Errorf("%s %s: read response: %w", req.Method, urlStr, readErr)
 	}
+	c.logf("%s %s -> %d in %s", req.Method, req.DisplayPath(), httpResp.StatusCode,
+		c.clk.Now().Sub(started).Round(time.Millisecond))
 	resp := &Response{StatusCode: httpResp.StatusCode, Header: httpResp.Header, Body: respBody}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode > 299 {
 		return resp, parseAPIError(req.Method, urlStr, httpResp, respBody)

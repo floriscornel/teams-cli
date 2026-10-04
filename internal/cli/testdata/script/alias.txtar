@@ -1,0 +1,33 @@
+# aliases are durable, per-profile names every command accepts (PLAN.md:168).
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams alias set eng Engineering/General
+stdout 'eng -> Engineering/General'
+
+exec teams alias set boss bob@example.com
+exec teams alias list
+stdout 'boss'
+stdout 'bob@example.com'
+stdout 'eng'
+
+# An alias works anywhere a reference does.
+exec teams channel read eng --limit 1
+stdout 'Hello @Yuki Tanaka'
+
+exec teams chat read @boss
+stdout 'lunch?'
+
+! exec teams alias set bad/name Engineering
+stderr 'invalid alias name'
+
+! exec teams alias set ok 'https://teams.microsoft.com/l/app/abc'
+stderr 'not a reference'
+
+exec teams alias rm eng
+stdout 'removed eng'
+! exec teams alias rm eng
+stderr 'no alias named'
+
+# Aliases are state: cache clear leaves them alone.
+exec teams cache clear
+exists state/me/aliases.toml

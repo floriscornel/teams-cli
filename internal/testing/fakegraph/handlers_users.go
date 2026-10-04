@@ -23,10 +23,6 @@ import (
 // escapes by doubling `'` as OData requires (PLAN.md "Escape `'` in OData
 // $filter").
 func handleListUsers(c *handlerCtx) {
-	if err := rejectUnsupported(c.query, "$top", "$filter", "$search", "$select", "$orderby"); err != nil {
-		c.fail(err)
-		return
-	}
 	filter, ferr := parseUserFilter(c.query.Get("$filter"))
 	if ferr != nil {
 		c.fail(ferr)
@@ -97,10 +93,6 @@ func handleGetUser(c *handlerCtx) {
 // the documented fuzzy $search; $top defaults to 25 and pages
 // (refs/graph/api-reference/v1.0/api/user-list-people.md:12-22).
 func handlePeople(c *handlerCtx) {
-	if err := rejectUnsupported(c.query, "$top", "$filter", "$search", "$select", "$orderby"); err != nil {
-		c.fail(err)
-		return
-	}
 	search := strings.Trim(c.query.Get("$search"), `"`)
 	search = strings.TrimPrefix(strings.TrimSpace(search), "topic:")
 	p, perr := parsePage(c.query, defaultTopPeople, maxTopMembers)

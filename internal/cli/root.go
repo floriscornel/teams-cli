@@ -19,6 +19,7 @@ import (
 	"github.com/floriscornel/teams-cli/internal/config"
 	"github.com/floriscornel/teams-cli/internal/graph"
 	"github.com/floriscornel/teams-cli/internal/output"
+	"github.com/floriscornel/teams-cli/internal/ref"
 	"github.com/floriscornel/teams-cli/internal/store"
 )
 
@@ -56,6 +57,8 @@ type App struct {
 	verboseFlag  int
 	noInputFlag  bool
 	readOnlyFlag bool
+	jqFlag       string
+	refreshFlag  bool
 
 	cfg       *config.Config
 	effective *config.Effective
@@ -63,6 +66,10 @@ type App struct {
 	authc     *auth.Client
 	graphc    *graph.Client
 	graphErr  error
+
+	resolverc   *ref.Resolver
+	entityCache *store.EntityCache
+	aliases     map[string]string
 }
 
 // New builds an App around the given streams. The Printer is built here rather
@@ -242,6 +249,8 @@ func (a *App) Auth(ctx context.Context) (*auth.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.Printer.Debugf("auth: profile %s, tenant %s, cloud %s, token store %s",
+		eff.Name, eff.Tenant, eff.Cloud, storeKindLabel(eff.TokenStore))
 	client, err := auth.New(ctx, auth.Options{
 		Effective:                eff,
 		Paths:                    paths,
@@ -288,6 +297,8 @@ func (a *App) Graph(ctx context.Context) (*graph.Client, error) {
 		Token:      authClient,
 		HTTPClient: a.Hooks.GraphHTTPClient,
 		UserAgent:  "teams-cli/" + Version,
+		Timeout:    graph.DefaultTimeout,
+		Logger:     a.Printer.Debugf,
 		Clock:      a.Clock,
 		Sleeper:    a.Hooks.Sleeper,
 		Recorder:   a.Hooks.Recorder,
@@ -320,7 +331,8 @@ func (a *App) newRootCmd() *cobra.Command {
 			a.Printer = output.New(output.Options{
 				Out:         a.Stdout,
 				Err:         a.Stderr,
-				JSON:        a.jsonFlag,
+				JSON:        a.jsonFlag || a.jqFlag != "",
+				JQ:          a.jqFlag,
 				NoColor:     a.noColorFlag,
 				Quiet:       a.quietFlag,
 				Verbose:     a.verboseFlag,
@@ -332,6 +344,13 @@ func (a *App) newRootCmd() *cobra.Command {
 						"drop --read-only / TEAMS_READ_ONLY=1, or use a profile with mode = \"full\"")
 				}
 			}
+			return nil
+		},
+		// A successful command persists what name resolution learned, so the next
+		// run resolves a team, channel or person without another scan
+		// (PLAN.md:170). A failed command leaves the cache alone.
+		PersistentPostRunE: func(*cobra.Command, []string) error {
+			a.saveEntityCache()
 			return nil
 		},
 	}
@@ -354,6 +373,8 @@ func (a *App) newRootCmd() *cobra.Command {
 	pf.CountVarP(&a.verboseFlag, "verbose", "v", "verbose diagnostics on stderr (-v, -vv)")
 	pf.BoolVar(&a.noInputFlag, "no-input", false, "never prompt; fail fast instead")
 	pf.BoolVar(&a.readOnlyFlag, "read-only", false, "refuse write commands")
+	pf.StringVar(&a.jqFlag, "jq", "", "filter JSON output through a jq expression (implies --json)")
+	pf.BoolVar(&a.refreshFlag, "refresh", false, "ignore cached names and resolve them again")
 
 	root.AddCommand(
 		a.newAuthCmd(),
@@ -363,6 +384,17 @@ func (a *App) newRootCmd() *cobra.Command {
 		a.newProfileCmd(),
 		a.newConfigCmd(),
 		a.newVersionCmd(),
+		// Phase 3: the read commands.
+		a.newTeamCmd(),
+		a.newChannelCmd(),
+		a.newChatCmd(),
+		a.newThreadCmd(),
+		a.newSearchCmd(),
+		a.newMentionsCmd(),
+		a.newUserCmd(),
+		a.newUnreadCmd(),
+		a.newFileCmd(),
+		a.newAliasCmd(),
 	)
 	return root
 }

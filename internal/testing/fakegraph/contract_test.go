@@ -83,6 +83,7 @@ var contractCalls = map[string]contractCall{
 	"POST /chats":                                      {path: "/chats", body: newGroupChatBody()},
 	"DELETE /chats/{chat-id}":                          {path: "/chats/chat-group"},
 	"POST /chats/{chat-id}/members":                    {path: "/chats/chat-group/members", body: newMemberBody()},
+	"GET /chats/{chat-id}/members":                     {path: "/chats/chat-group/members"},
 	"POST /chats/{chat-id}/markChatReadForUser":        {path: "/chats/chat-1on1/markChatReadForUser", body: map[string]any{"user": map[string]string{"id": "u-me"}}},
 	"POST /chats/{chat-id}/markChatUnreadForUser":      {path: "/chats/chat-1on1/markChatUnreadForUser", body: map[string]any{"user": map[string]string{"id": "u-me"}}},
 	"GET /chats/{chat-id}/messages":                    {path: "/chats/chat-1on1/messages"},

@@ -1,0 +1,82 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-thread-read - Read one message and, for a channel, its thread
+
+
+.SH SYNOPSIS
+\fBteams thread read  [flags]\fP
+
+
+.SH DESCRIPTION
+Read a message.  is a Teams message link, Team/Channel/MessageId,
+Team/Channel/ or a chat message link. Channel threads are read with the
+messages/{id} and messages/{id}/replies endpoints; chats have no threads, so a
+chat message is shown on its own.
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	fetch every page of replies
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for read
+
+.PP
+\fB--limit\fP=0
+	maximum number of replies (0 means every page)
+
+.PP
+\fB--since\fP=""
+	only replies newer than this (a duration like 24h, or a timestamp)
+
+.PP
+\fB--team\fP=""
+	team the channel belongs to (when the reference does not say)
+
+.PP
+\fB--until\fP=""
+	only replies older than this (a duration like 24h, or a timestamp)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-thread(1)\fP

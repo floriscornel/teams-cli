@@ -163,6 +163,62 @@ paths:
           type: string
         x-ms-docs-key-type: chat
   /chats/{chat-id}/members:
+    get:
+      tags:
+        - chats.conversationMember
+      summary: List conversationMembers
+      description: List all conversation members in a chat or channel.
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/conversationmember-list?view=graph-rest-1.0
+      operationId: chats.ListMembers
+      parameters:
+        - $ref: '#/components/parameters/top'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/filter'
+        - $ref: '#/components/parameters/count'
+        - name: $orderby
+          in: query
+          description: Order items by property values
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $select
+          in: query
+          description: Select properties to be returned
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $expand
+          in: query
+          description: Expand related entities
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+      responses:
+        2XX:
+          $ref: '#/components/responses/microsoft.graph.conversationMemberCollectionResponse'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-pageable:
+        nextLinkName: '@odata.nextLink'
+        operationName: listMore
+      x-ms-docs-operation-type: operation
     post:
       tags:
         - chats.conversationMember
@@ -2287,6 +2343,71 @@ paths:
         schema:
           type: string
         x-ms-docs-key-type: chatMessage
+  /teams/{team-id}/members:
+    get:
+      tags:
+        - teams.conversationMember
+      summary: List members of team
+      description: 'Get the conversationMember collection of a team. The membership IDs returned by the server must be treated as opaque strings. The client shouldn''t try to parse or make assumptions about these resource IDs. In the future, membership results can include users from various tenants, as indicated in the response. Clients should avoid assuming that all members exclusively belong to the current tenant.'
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/team-list-members?view=graph-rest-1.0
+      operationId: teams.ListMembers
+      parameters:
+        - $ref: '#/components/parameters/top'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/filter'
+        - $ref: '#/components/parameters/count'
+        - name: $orderby
+          in: query
+          description: Order items by property values
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $select
+          in: query
+          description: Select properties to be returned
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $expand
+          in: query
+          description: Expand related entities
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+      responses:
+        2XX:
+          $ref: '#/components/responses/microsoft.graph.conversationMemberCollectionResponse'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-pageable:
+        nextLinkName: '@odata.nextLink'
+        operationName: listMore
+      x-ms-docs-operation-type: operation
+    parameters:
+      - name: team-id
+        in: path
+        description: The unique identifier of team
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: team
   /users:
     get:
       tags:
@@ -5993,6 +6114,17 @@ components:
               type: string
           discriminator:
             propertyName: '@odata.type'
+    microsoft.graph.conversationMemberCollectionResponse:
+      title: Collection of conversationMember
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseCollectionPaginationCountResponse'
+        - type: object
+          properties:
+            value:
+              type: array
+              items:
+                $ref: '#/components/schemas/microsoft.graph.conversationMember'
     microsoft.graph.conversationThread:
       allOf:
         - $ref: '#/components/schemas/microsoft.graph.entity'
@@ -23592,6 +23724,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/microsoft.graph.chatMessageHostedContentCollectionResponse'
+    microsoft.graph.conversationMemberCollectionResponse:
+      description: Retrieved collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/microsoft.graph.conversationMemberCollectionResponse'
     microsoft.graph.driveItemCollectionResponse:
       description: Retrieved collection
       content:

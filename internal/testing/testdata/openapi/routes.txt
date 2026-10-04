@@ -11,6 +11,7 @@ POST /chats refs/graph/api-reference/v1.0/api/chat-post.md
 DELETE /chats/{chat-id} refs/graph/api-reference/v1.0/api/chat-delete.md
 POST /chats/{chat-id}/markChatReadForUser refs/graph/api-reference/v1.0/api/chat-markchatreadforuser.md
 POST /chats/{chat-id}/markChatUnreadForUser refs/graph/api-reference/v1.0/api/chat-markchatunreadforuser.md
+GET /chats/{chat-id}/members refs/graph/api-reference/v1.0/api/chat-list-members.md
 POST /chats/{chat-id}/members refs/graph/api-reference/v1.0/api/chat-post-members.md
 GET /chats/{chat-id}/messages refs/graph/api-reference/v1.0/api/chat-list-messages.md
 POST /chats/{chat-id}/messages refs/graph/api-reference/v1.0/api/chat-post-messages.md
@@ -54,5 +55,6 @@ POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/replies/{r
 POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/setReaction refs/graph/api-reference/v1.0/api/chatmessage-setreaction.md
 POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/softDelete refs/graph/api-reference/v1.0/api/chatmessage-softdelete.md
 POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/unsetReaction refs/graph/api-reference/v1.0/api/chatmessage-unsetreaction.md
+GET /teams/{team-id}/members refs/graph/api-reference/v1.0/api/team-list-members.md
 GET /users refs/graph/api-reference/v1.0/api/user-list.md
 GET /users/{user-id} refs/graph/api-reference/v1.0/api/user-get.md

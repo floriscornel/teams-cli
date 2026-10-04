@@ -337,6 +337,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, sub bool) {
 		writeError(sw, r, http.StatusUnauthorized, "InvalidAuthenticationToken", "Access token is empty.")
 		return
 	}
+	if err := rejectUndeclaredQueryOptions(*route, r.URL.Query()); err != nil {
+		writeError(sw, r, err.Status, err.Code, err.Message)
+		return
+	}
 	if missing := missingScope(route.scopes, granted); missing != "" {
 		writeScopeError(sw, r, missing, s.scopeIsAdminOnly(missing))
 		return

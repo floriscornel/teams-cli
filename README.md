@@ -4,9 +4,10 @@ A single static binary for Microsoft Teams: search and read messages, channels,
 threads and chats, and (from Phase 4) post, reply, edit and react — as yourself,
 or as a company service account.
 
-This repository is at **Phase 2 (Foundation)**: the CLI skeleton, config and
-profiles, authentication, the local data layout, the Graph transport layer and
-the test harness are in place. Read commands land in Phase 3, write commands in
+This repository is at **Phase 3 (Read)**: the CLI skeleton, config and profiles,
+authentication, the local data layout, the Graph transport layer and the test
+harness are in place, and every read command works — teams, channels, chats,
+threads, search, mentions, users, files and aliases. Write commands land in
 Phase 4, the bot/headless work in Phase 5 and the AI features in Phase 6.
 [PLAN.md](PLAN.md) is the source of truth for what exists and why.
 
@@ -62,7 +63,34 @@ mise run snapshot     # cross-compile the release matrix locally
 mise run refs-check   # verify the vendored reference mirror (needs refs-fetch)
 ```
 
-## Commands (Phase 2)
+## Commands
+
+Reading (Phase 3):
+
+| Command | What it does |
+|---|---|
+| `teams team list` / `teams team show <team>` | The teams you belong to, and one team's details |
+| `teams channel list <team>` / `teams channel show <channel>` | A team's channels, and one channel |
+| `teams channel read <channel> [--limit --all --since --until --replies]` | A channel's messages, with threads on request |
+| `teams channel files <channel>` | The channel's SharePoint folder |
+| `teams thread read <message>` | One message and its thread (a chat message has none) |
+| `teams chat list [--with <user> --topic <q> --unread]` | Your chats, newest activity first |
+| `teams chat show <chat>` | One chat with its members and read state |
+| `teams chat read <chat> [--since --until --from --limit --all]` | A chat's messages |
+| `teams search <query> [--from --to --in --since --until --mentions-me --has-attachment --limit --page]` | KQL search over Teams messages |
+| `teams mentions [--since 24h]` | The messages that mention you |
+| `teams unread [--chats --mentions]` | Unread chats and unread mentions |
+| `teams user search <q>` / `teams user show <user>` | The directory, and one person |
+| `teams file download <message> [-o dir] [--name --no-images --overwrite]` | Attachments and inline images |
+| `teams alias set\|list\|rm` | Name a person, chat or channel once and reuse it |
+
+Every `<team>`, `<channel>`, `<chat>`, `<message>` and `<user>` argument accepts a
+Teams deep link, a `Team/Channel` name path, `@person`, an e-mail address, an
+alias or a raw id. Names are matched case-insensitively, kept in a per-profile
+entity cache (an hour for names, a week for people) and re-resolved with
+`--refresh`.
+
+Account and local data (Phase 2):
 
 | Command | What it does |
 |---|---|
@@ -76,8 +104,8 @@ mise run refs-check   # verify the vendored reference mirror (needs refs-fetch)
 | `teams config get\|set\|list` | Read and write the config file |
 | `teams version` | Build information |
 
-Global flags: `--profile`, `--json`, `--no-color`, `--quiet`, `-v/--verbose`,
-`--no-input`, `--read-only`.
+Global flags: `--profile`, `--json`, `--jq <expr>`, `--refresh`, `--no-color`,
+`--quiet`, `-v/--verbose`, `--no-input`, `--read-only`.
 
 Exit codes: `0` ok, `1` error, `2` usage, `3` auth required, `4` not found,
 `5` throttled.

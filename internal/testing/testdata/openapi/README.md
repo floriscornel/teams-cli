@@ -98,7 +98,20 @@ mapping that ends up empty is dropped. This is safe for validation because kin-o
 consults a discriminator mapping when the input actually carries the discriminator
 property, and the surviving entries are exactly the reachable ones.
 
-### 3. Path parameter names follow the api-reference
+### 3. Query options are wider than the service
+
+Microsoft's description declares the generic OData parameter set (`$top`, `$skip`,
+`$filter`, `$count`, `$orderby`, `$search`, `$select`, `$expand`) on operations whose
+api-reference page says the method supports *no* query parameters at all —
+`/me/joinedTeams` is the one that bit us: the description declares `$top`, the page says
+"This method doesn't currently support the OData query parameters"
+(`user-list-joinedteams.md:39`), and a live tenant answers 400
+`Query option 'Top' is not allowed`. The spec is therefore **not** a check on which
+options a route accepts: `fakegraph` owns that, in its query-option gate
+(`internal/testing/fakegraph/queryoptions.go`), where every route declares its
+documented options and an undeclared one is refused.
+
+### 4. Path parameter names follow the api-reference
 
 `team-id`, `channel-id`, `chatMessage-id`, `reply-id`, `hosted-content-id` — not the
 description's `group-id`, `chatMessage-id1`, `chatMessageHostedContent-id`. The two sources
@@ -107,12 +120,14 @@ spell the same endpoints differently, and the trimmed copy has to match what the
 ## Gaps in the committed surface
 
 Two groups of endpoints the CLI uses are deliberately **not** in the route list, because
-they cannot be contract-tested. They are covered by `fakegraph` instead.
+they cannot be contract-tested. They are covered by `fakegraph` instead, and the fake's
+contract hook skips them with the same citation.
 
 | Endpoints | Why they are out |
 |---|---|
 | `GET /groups/{group-id}/drive/items/{item-id}` and its `/children`, `/content` and `/createUploadSession` variants | `driveitem-get.md`, `driveitem-get-content.md`, `driveitem-put-content.md` and `driveitem-createuploadsession.md` document them, but Microsoft's description models the group drive differently (`/groups/{group-id}/drive` and `/groups/{group-id}/drives/{drive-id}`, with no item collection under either). There is nothing to validate against, so the `/drives/{drive-id}/items/{driveItem-id}/...` form is committed instead. |
-| `GET /teams/.../$value` (hosted-content bytes) and the chat reply routes | The api-reference documents the chat form of the byte fetch only in an example block, and its replies page documents the channel form only. Committing a route that its own cited page does not describe would make the route-list invariant meaningless. |
+| `GET /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/hostedContents/{hosted-content-id}/$value` (a channel message's inline image) | The description declares the path, but the api-reference page that documents the operation lists only the container without the `/$value` suffix (`chatmessagehostedcontent-get.md`, "HTTP request"), so the route-list invariant cannot see it. `teams file download` still fetches the bytes, because the message body's own `<img src="../hostedContents/1/$value">` reference requires it (`chatmessage-post.md`). |
+| The chat reply routes | The api-reference's replies page documents the channel form only, and `chatmessage-get.md` documents the channel reply form. Committing a route that its own cited page does not describe would make the route-list invariant meaningless. |
 
 ## Checking that the committed files are current
 

@@ -91,6 +91,11 @@ var routes = []Route{
 	// Chats (refs/INDEX.md "Chats").
 	{"GET", "/me/chats", "chat-list.md"},
 	{"GET", "/me/chats/{chat-id}", "chat-get.md"},
+	// Member listings: a team's members and a chat's members. Both are
+	// documented on their own page, and the fake serves them for the person
+	// resolution in internal/ref (PLAN.md:167).
+	{"GET", "/teams/{team-id}/members", "team-list-members.md"},
+	{"GET", "/chats/{chat-id}/members", "chat-list-members.md"},
 	{"POST", "/chats", "chat-post.md"},
 	{"DELETE", "/chats/{chat-id}", "chat-delete.md"},
 	{"POST", "/chats/{chat-id}/members", "chat-post-members.md"},

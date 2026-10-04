@@ -1,0 +1,62 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-user-show - Show one user
+
+
+.SH SYNOPSIS
+\fBteams user show  [flags]\fP
+
+
+.SH DESCRIPTION
+Show one user.  is an e-mail address, a user principal name, an id,
+@name or a display name; a name is resolved through the entity cache, the
+members of your chats and teams, /me/people and finally the directory
+(PLAN.md:167).
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for show
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-user(1)\fP

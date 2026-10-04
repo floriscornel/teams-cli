@@ -3,7 +3,6 @@ package fakegraph
 import (
 	"net/url"
 	"strconv"
-	"strings"
 )
 
 // This file implements the paging every collection shares. Graph pages with
@@ -125,24 +124,6 @@ func pageAndLink[T any](s *Server, rel string, q url.Values, all []T, p pagePara
 	return pageOf(s, rel, q, items, next, len(all))
 }
 
-// rejectUnsupported rejects the OData parameters a collection does not
-// support, with the wording the live service uses: "Parameter 'Filter' not
-// supported" (docs/spike/phase1.md:53). This is what keeps a caller from
-// believing a $filter was applied when Graph ignored it.
-func rejectUnsupported(q url.Values, allowed ...string) *apiError {
-	ok := map[string]bool{"$skiptoken": true, "$skip": true}
-	for _, a := range allowed {
-		ok[a] = true
-	}
-	for _, name := range []string{"$filter", "$orderby", "$search", "$count", "$select", "$expand"} {
-		if q.Get(name) == "" {
-			continue
-		}
-		if ok[name] {
-			continue
-		}
-		label := strings.TrimPrefix(name, "$")
-		return badRequestf("Parameter '%s' not supported", strings.ToUpper(label[:1])+label[1:])
-	}
-	return nil
-}
+// The query-option gate lives in queryoptions.go: it is one table of documented
+// options per route, so an invented parameter cannot slip through as it did for
+// $top on /me/joinedTeams.

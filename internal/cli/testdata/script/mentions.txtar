@@ -1,0 +1,24 @@
+# mentions: IsMentioned:true plus a client-side timestamp check.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams mentions
+stdout 'Bob Builder'
+stdout 'release notes'
+stderr '1 of 1 match'
+
+exec teams mentions --since 1h --json --jq '.hits[0].resource.id'
+stdout '^m-2002$'
+
+# --since is exact: nothing is newer than 5 minutes ago.
+exec teams mentions --since 5m --json --jq '.hits | length'
+stdout '^0$'
+
+# --until drops what is newer than the window, so a window ending 30 minutes ago
+# has nothing in it: the only mention is 20 minutes old.
+exec teams mentions --since 1h --until 30m --json --jq '.hits | length'
+stdout '^0$'
+
+# The search itself carries sent>=, so a wide window asks Graph for the message
+# and the client-side check keeps it.
+exec teams mentions --since 2h --json --jq '.total'
+stdout '^1$'

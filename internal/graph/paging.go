@@ -72,6 +72,9 @@ func EachPage[T any](ctx context.Context, c *Client, path string, q url.Values, 
 		if err != nil {
 			return err
 		}
+		// A listing that pages several times is the common reason a read command
+		// looks slow, so every page is visible under -v.
+		c.logf("page %d of %s: %d item(s), more: %t", page+1, path, len(result.Value), result.NextLink != "")
 		next, stop, err := func() (string, bool, error) {
 			keepGoing, err := fn(result)
 			return result.NextLink, !keepGoing, err

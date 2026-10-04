@@ -23,6 +23,10 @@ non-interactive mode.
 	help for teams
 
 .PP
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
 \fB--json\fP[=false]
 	machine-readable JSON output
 
@@ -47,9 +51,13 @@ non-interactive mode.
 	refuse write commands
 
 .PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
 \fB-v\fP, \fB--verbose\fP[=0]
 	verbose diagnostics on stderr (-v, -vv)
 
 
 .SH SEE ALSO
-\fBteams-auth(1)\fP, \fBteams-cache(1)\fP, \fBteams-config(1)\fP, \fBteams-doctor(1)\fP, \fBteams-profile(1)\fP, \fBteams-version(1)\fP, \fBteams-whoami(1)\fP
+\fBteams-alias(1)\fP, \fBteams-auth(1)\fP, \fBteams-cache(1)\fP, \fBteams-channel(1)\fP, \fBteams-chat(1)\fP, \fBteams-config(1)\fP, \fBteams-doctor(1)\fP, \fBteams-file(1)\fP, \fBteams-mentions(1)\fP, \fBteams-profile(1)\fP, \fBteams-search(1)\fP, \fBteams-team(1)\fP, \fBteams-thread(1)\fP, \fBteams-unread(1)\fP, \fBteams-user(1)\fP, \fBteams-version(1)\fP, \fBteams-whoami(1)\fP

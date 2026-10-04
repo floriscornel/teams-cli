@@ -1,0 +1,61 @@
+# channel list/show/read/files, the read commands of PLAN.md Phase 3.
+env TEAMS_ACCESS_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJ0aWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLmNvbSIsInNjcCI6IlVzZXIuUmVhZCBVc2VyLlJlYWRCYXNpYy5BbGwgVGVhbS5SZWFkQmFzaWMuQWxsIFRlYW1NZW1iZXIuUmVhZC5BbGwgQ2hhbm5lbC5SZWFkQmFzaWMuQWxsIENoYW5uZWxNZXNzYWdlLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBGaWxlcy5SZWFkLkFsbCBQZW9wbGUuUmVhZCIsImV4cCI6MTg5MzQ1NjAwMH0.
+
+exec teams channel list Engineering
+stdout 'General'
+stdout 'Releases'
+stdout '19:general@thread.tacv2'
+
+exec teams channel list Engineering/General
+! stderr 'unknown'
+stdout 'General'
+
+exec teams channel show Engineering/General
+stdout 'name:.*General'
+stdout 'team:.*Engineering'
+stdout 'type:.*standard'
+
+exec teams channel show 19:general@thread.tacv2 --team Engineering
+stdout 'name:.*General'
+
+exec teams channel read Engineering/General
+stdout 'Bob Builder'
+stdout 'Morning all, the deploy notes are attached.'
+stdout 'Yuki Tanaka'
+stdout 'Hello @Yuki Tanaka, can you review the deploy?'
+stdout 'reactions: 👍 2'
+stdout 'attachment: deploy-notes.md'
+
+# --replies renders each thread's replies under its root (PLAN.md:187).
+exec teams channel read Engineering/General --replies --limit 5
+stdout 'On it.'
+
+# --limit takes the newest N, and the screen order is chronological.
+exec teams channel read Engineering/General --limit 1
+stdout 'Hello @Yuki Tanaka'
+! stdout 'Morning all'
+
+# --since stops at the first thread older than the window (PLAN.md:187).
+exec teams channel read Engineering/General --since 30m
+stderr 'no messages in #General'
+
+exec teams channel read Engineering/General --since 4h --json --jq '.[0].id'
+stdout '^m-1002$'
+
+exec teams channel read Engineering/General --json --jq '.[0].mentions[0].mentioned.user.displayName'
+stdout '^Yuki Tanaka$'
+
+# The channel's SharePoint folder.
+exec teams channel files Engineering/General
+stdout 'deploy-notes.md'
+stdout 'archive'
+stdout 'folder'
+
+exec teams channel files Engineering/General --json --jq '.[0].name'
+stdout '^deploy-notes.md$'
+
+# A channel-message link without groupId cannot be resolved: every channel route
+# needs the team id (PLAN.md:164).
+! exec teams channel read 'https://teams.microsoft.com/l/message/19%3Ageneral%40thread.tacv2/m-1001?parentMessageId=m-1001'
+stderr 'does not carry a team id'
+stderr 'pass --team'
