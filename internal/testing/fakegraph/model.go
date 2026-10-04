@@ -70,6 +70,11 @@ type Model struct {
 	Chats []Chat
 	// Drives carry drive items (files and folders).
 	Drives []Drive
+	// MyDriveID is the drive GET /me/drive reports, which is where a chat file
+	// attachment is uploaded (refs/teams-mcp/src/utils/file-upload.ts:256). It
+	// defaults to [DefaultMyDriveID]; seed a Drive with that id to give the
+	// user's drive pre-existing items.
+	MyDriveID string
 }
 
 // User is a directory user.
@@ -257,6 +262,9 @@ const (
 	defaultLocale      = "en-us"
 	defaultVisibility  = "public"
 	defaultDrivePrefix = "drive-"
+	// DefaultMyDriveID is the id GET /me/drive reports when the seed does not
+	// name one.
+	DefaultMyDriveID = "drive-me"
 )
 
 func (m Model) withDefaults() Model {
@@ -339,6 +347,9 @@ func (m Model) withDefaults() Model {
 				it.Modified = it.Created
 			}
 		}
+	}
+	if m.MyDriveID == "" {
+		m.MyDriveID = DefaultMyDriveID
 	}
 	return m
 }

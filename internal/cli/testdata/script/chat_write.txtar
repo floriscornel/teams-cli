@@ -1,0 +1,65 @@
+# chat create, add-member, mark-read/mark-unread and delete.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# A group chat: every member including the caller carries the owner role, and
+# the topic is only valid on a group chat (chat-post.md:47).
+exec teams chat create --with bob@example.com --with yuki@example.com --topic Launch
+stdout 'created Launch'
+exec teams chat list --all --json --jq '[.[] | select(.topic=="Launch")][0].chatType'
+stdout 'group'
+exec teams chat list --all --json --jq '[.[] | select(.topic=="Launch")][0].members | length'
+stdout '3'
+
+# One participant makes a one-on-one chat; when it exists, POST /chats returns it
+# (chat-post.md:16), so the CLI lands on the seeded chat.
+exec teams chat create --with bob@example.com
+stdout 'created'
+exec teams chat list --all --json --jq '[.[] | select(.id=="19:bob@thread.v2")][0].chatType'
+stdout 'oneOnOne'
+
+# --dry-run shows the documented body without creating anything.
+exec teams chat create --with bob@example.com --dry-run
+stdout '"path": "/chats"'
+stdout '"chatType": "oneOnOne"'
+stdout '"user@odata.bind"'
+stdout '"roles": \['
+
+# add-member adds one member per call and reports each one.
+exec teams chat add-member Launch carol@example.com
+stdout 'added Carol Chen'
+exec teams chat show Launch --json --jq '.members | length'
+stdout '4'
+
+# A person that cannot be resolved fails before any member is added.
+! exec teams chat add-member Launch nobody@example.com
+stderr 'no person matches'
+
+exec teams chat add-member Launch carol@example.com --dry-run
+stdout '"paths"'
+
+# mark-read and mark-unread move the per-user watermark that `chat list --unread`
+# reads back (chatviewpoint.md).
+exec teams chat mark-read 'Release train'
+stdout 'marked Release train read'
+exec teams chat list --unread --json --jq 'length'
+stdout '0'
+exec teams chat mark-unread 'Release train'
+stdout 'marked Release train unread'
+exec teams chat list --unread --json --jq 'length'
+stdout '1'
+
+exec teams chat mark-unread 'Release train' --dry-run
+stdout '"path": "/chats/19:release-train@thread.v2/markChatUnreadForUser"'
+stdout '"user"'
+
+# delete needs confirmation; --yes is what a non-interactive run passes.
+! exec teams chat delete Launch
+stderr 'needs confirmation'
+exec teams chat delete Launch --yes
+stdout 'deleted Launch'
+exec teams chat list --all --json --jq '[.[] | select(.topic=="Launch")] | length'
+stdout '0'
+
+exec teams chat delete 'Release train' --dry-run
+stdout '"method": "DELETE"'
+stdout '"path": "/chats/19:release-train@thread.v2"'

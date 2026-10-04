@@ -598,12 +598,12 @@ func TestDoctorFeatureMatrixWithPartialScopes(t *testing.T) {
 func TestReadOnlyGuardRecognizesWriteCommands(t *testing.T) {
 	cases := map[string]bool{
 		"post": true, "reply": true, "edit": true, "delete": true, "react": true,
-		"logout": true, "create": true, "add-member": true, "mark-read": true,
+		"logout": true, "create": true, "add-member": true, "mark-read": true, "mark-unread": true,
 		"auth": false, "cache": false, "whoami": false, "doctor": false, "profile": false,
 	}
 	for name, want := range cases {
 		cmd := &cobra.Command{Use: name}
-		if got := isWriteCommand(cmd); got != want {
+		if got := isWriteCommand(cmd, nil); got != want {
 			t.Errorf("isWriteCommand(%q) = %v, want %v", name, got, want)
 		}
 	}
@@ -611,8 +611,25 @@ func TestReadOnlyGuardRecognizesWriteCommands(t *testing.T) {
 	parent := &cobra.Command{Use: "chat"}
 	child := &cobra.Command{Use: "delete"}
 	parent.AddCommand(child)
-	if !isWriteCommand(child) {
+	if !isWriteCommand(child, nil) {
 		t.Error("nested write command not detected")
+	}
+	// `teams api` is a write only when its method is.
+	api := &cobra.Command{Use: "api"}
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"GET", "/me"}, false},
+		{[]string{"get", "/me"}, false},
+		{[]string{"HEAD", "/me"}, false},
+		{[]string{"POST", "/me/chats"}, true},
+		{[]string{"DELETE", "/chats/x"}, true},
+		{nil, true},
+	} {
+		if got := isWriteCommand(api, tc.args); got != tc.want {
+			t.Errorf("isWriteCommand(api, %v) = %v, want %v", tc.args, got, tc.want)
+		}
 	}
 }
 
@@ -632,16 +649,28 @@ func TestGlobalFlagsReachThePrinter(t *testing.T) {
 
 func TestReadOnlyFlagBlocksWriteCommands(t *testing.T) {
 	h := newHarness(t)
-	// No write command exists yet in Phase 2, so assert the guard directly on a
-	// fabricated one through the command tree.
-	root := h.app.newRootCmd()
-	fake := &cobra.Command{Use: "post", RunE: func(*cobra.Command, []string) error { return nil }}
-	root.AddCommand(fake)
-	root.SetArgs([]string{"--read-only", "post"})
-	err := root.ExecuteContext(context.Background())
-	h.wantCode(err, output.CodeUsage)
-	if !strings.Contains(err.Error(), "read-only") {
-		t.Errorf("error = %v", err)
+	// The real Phase 4 commands are refused through the guard, which runs before
+	// the command body and therefore before any network call.
+	for _, args := range [][]string{
+		{"--read-only", "post", "Engineering/General", "hi"},
+		{"--read-only", "reply", "m-1001", "hi"},
+		{"--read-only", "delete", "m-1001"},
+		{"--read-only", "react", "m-1001", "\U0001F44D"},
+		{"--read-only", "chat", "delete", "19:bob@thread.v2"},
+		{"--read-only", "chat", "mark-read", "19:bob@thread.v2"},
+		{"--read-only", "api", "POST", "/me/chats"},
+	} {
+		err := h.run(args...)
+		h.wantCode(err, output.CodeUsage)
+		if err == nil || !strings.Contains(err.Error(), "read-only") {
+			t.Errorf("%v: error = %v, want a read-only refusal", args, err)
+		}
+	}
+	// A raw GET is a read: the guard is about the method, not the command.
+	if err := h.run("--read-only", "api", "GET", "/me"); err == nil {
+		t.Error("a raw GET was refused in read-only mode")
+	} else if strings.Contains(err.Error(), "read-only") {
+		t.Errorf("a raw GET was treated as a write: %v", err)
 	}
 }
 

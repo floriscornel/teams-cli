@@ -12,12 +12,12 @@
   },
   "counts": {
     "pathKeysInSource": 11546,
-    "pathsKept": 42,
-    "schemasKept": 656,
+    "pathsKept": 45,
+    "schemasKept": 657,
     "responsesKept": 10,
     "parametersKept": 5,
     "requestBodiesKept": 0,
-    "odataTypeRequiredStripped": 504,
+    "odataTypeRequiredStripped": 505,
     "discriminatorMappingEntriesPruned": 1099,
     "pathAliasRewrites": 6
   },

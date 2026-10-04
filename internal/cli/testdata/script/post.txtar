@@ -1,0 +1,78 @@
+# post to a channel and a chat: markdown, mentions, plain text, attachments and
+# --dry-run. The mention is the PLAN.md:179 golden path: build a body with a
+# mention, send it, and read the <at> tag back intact.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# A channel post with a mention: the body carries <at id="0"> and the matching
+# mentions[] entry for the person --mention named.
+exec teams post Engineering/General 'hello @alice, please review' --mention alice@example.com
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout 'hello <at id="0">Alice Example</at>, please review'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].mentions[0].mentioned.user.displayName'
+stdout 'Alice Example'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].mentions[0].mentioned.user.userIdentityType'
+stdout 'aadUser'
+
+# The quoted form and the display name both work as the spelling to look for.
+exec teams post Engineering/General 'cc @"Yuki Tanaka" on the review' --mention yuki@example.com
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout 'cc <at id="0">Yuki Tanaka</at> on the review'
+
+# Markdown is converted and sanitized, not sent raw; --text stays verbatim.
+exec teams post Engineering/General '**bold** & <script>bad()</script>' --subject Deploy --importance high
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout '<strong>bold</strong>'
+! stdout 'script'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].subject'
+stdout 'Deploy'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].importance'
+stdout 'high'
+
+exec teams post Engineering/General 'plain & simple' --text
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.contentType'
+stdout 'text'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout 'plain & simple'
+
+# A chat is a topic name, a link or @person; a bare name is a topic.
+exec teams post 'Release train' 'ship the release'
+stdout 'posted'
+exec teams chat read 'Release train' --json --jq '.[0].body.content'
+stdout 'ship the release'
+
+# @person posts into the one-on-one chat, which POST /chats returns when it
+# already exists (refs/graph/api-reference/v1.0/api/chat-post.md:16).
+exec teams post @bob 'lunch?'
+stdout 'posted'
+exec teams chat read 19:bob@thread.v2 --json --jq '[.[].body.content] | join("|")'
+stdout 'lunch?'
+
+# --dry-run prints the request and sends nothing.
+exec teams post Engineering/General 'never sent' --dry-run
+stdout '"dryRun": true'
+stdout '"method": "POST"'
+stdout '"path": "/teams/team-eng/channels/19:general@thread.tacv2/messages"'
+stdout '"content": "<p>never sent</p>"'
+# The dry run really sent nothing: the newest message is still the --text one.
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout 'plain & simple'
+
+# Flag conflicts are usage errors, before any network call.
+! exec teams post Engineering/General hi --md --text
+stderr 'mutually exclusive'
+! exec teams post Engineering/General 'hi @alice' --text --mention alice@example.com
+stderr 'needs an HTML body'
+! exec teams post Engineering/General hi --importance urgentish
+stderr 'use normal, high or urgent'
+# A mention the body does not name is a usage error rather than a payload Graph
+# would reject.
+! exec teams post Engineering/General 'nothing here' --mention alice@example.com
+stderr 'does not mention Alice Example'
+stderr 'looked for @alice@example.com, @Alice Example, @alice'
+# A message reference is not a container.
+! exec teams post Engineering/General/m-1002 hi
+stderr 'is a message, not a container'

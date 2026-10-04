@@ -1,14 +1,15 @@
 # teams
 
 A single static binary for Microsoft Teams: search and read messages, channels,
-threads and chats, and (from Phase 4) post, reply, edit and react — as yourself,
+threads and chats, and post, reply, edit, react and attach files — as yourself,
 or as a company service account.
 
-This repository is at **Phase 3 (Read)**: the CLI skeleton, config and profiles,
+This repository is at **Phase 4 (Write)**: the CLI skeleton, config and profiles,
 authentication, the local data layout, the Graph transport layer and the test
-harness are in place, and every read command works — teams, channels, chats,
-threads, search, mentions, users, files and aliases. Write commands land in
-Phase 4, the bot/headless work in Phase 5 and the AI features in Phase 6.
+harness are in place; every read command works (teams, channels, chats, threads,
+search, mentions, users, files and aliases) and so does every write — posting,
+replying, editing, deleting, reacting, chat management and a raw `teams api`
+escape hatch. The bot/headless work is Phase 5 and the AI features are Phase 6.
 [PLAN.md](PLAN.md) is the source of truth for what exists and why.
 
 ## Install
@@ -89,6 +90,28 @@ Teams deep link, a `Team/Channel` name path, `@person`, an e-mail address, an
 alias or a raw id. Names are matched case-insensitively, kept in a per-profile
 entity cache (an hour for names, a week for people) and re-resolved with
 `--refresh`.
+
+Writing (Phase 4):
+
+| Command | What it does |
+|---|---|
+| `teams post <channel\|chat> [text\|-]` | Post a message: markdown (default), `--text`, `--html`, `--mention`, `--file`, `--subject`, `--importance`, `--dry-run` |
+| `teams reply <message> [text\|-]` | Reply in a channel thread, or quote-reply in a chat |
+| `teams edit <message> [text\|-]` | Edit the body (and `--subject`) of a message you sent |
+| `teams delete <message>` | Soft-delete a message, as Teams does |
+| `teams react <message> <emoji> [--remove]` | Set or remove your reaction |
+| `teams chat create --with <person> [--topic]` | A one-on-one or group chat (returns the existing one-on-one chat) |
+| `teams chat add-member <chat> <person…>` | Add members |
+| `teams chat delete <chat> [--yes]` | Delete a chat; the admin-consented scope is requested on demand |
+| `teams chat mark-read\|mark-unread <chat>` | Move your own read watermark |
+| `teams api <method> <path> [-f k=v \| -F k=v \| --input file]` | Raw Graph call, with `--query`, `--header` and `--dry-run` |
+
+A message body is sanitized against the Teams allow-list and mentions are
+inserted *after* the sanitizer runs — the other order silently drops every
+`<at>` tag. `--file` uploads a file into the channel's SharePoint folder (or
+your OneDrive for a chat) and references it as an attachment; an image up to the
+documented 4 MB inline limit is embedded in the message instead. Every write
+command supports `--dry-run`, which prints the Graph request it would send.
 
 Account and local data (Phase 2):
 

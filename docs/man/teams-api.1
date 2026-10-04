@@ -1,0 +1,96 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-api - Call Microsoft Graph directly
+
+
+.SH SYNOPSIS
+\fBteams api   [flags]\fP
+
+
+.SH DESCRIPTION
+Call a Graph endpoint directly, for the operations the CLI does not wrap.
+
+.PP
+ is an HTTP method (GET, POST, PATCH, PUT, DELETE) and  is a
+Graph path such as /me or /teams/{id}/channels; it may carry a query string.
+
+.PP
+Fields:
+  -f key=value   a string field, dotted keys nest (body.content=hi)
+  -F key=value   a typed field: true, false, null and numbers keep their type
+  --input     the whole JSON body from a file, or - for stdin
+
+.PP
+Read-only mode refuses every method but GET and HEAD.
+
+
+.SH OPTIONS
+\fB--dry-run\fP[=false]
+	print the request without sending it
+
+.PP
+\fB-f\fP, \fB--field\fP=[]
+	add a string field to the JSON body (key=value, dotted keys nest)
+
+.PP
+\fB--header\fP=[]
+	extra request header ("Name: value", repeatable)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for api
+
+.PP
+\fB--input\fP=""
+	read the JSON body from a file, or - for stdin
+
+.PP
+\fB--query\fP=[]
+	query parameter (key=value, repeatable)
+
+.PP
+\fB-F\fP, \fB--raw-field\fP=[]
+	add a typed field (true/false, a number and null keep their type)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP

@@ -152,6 +152,9 @@ type store struct {
 
 	drives     map[string]*driveRec
 	driveOrder []string
+	// myDrive is the drive GET /me/drive reports (Model.MyDriveID), which is
+	// where a chat file attachment lands.
+	myDrive string
 
 	// uploads holds the in-flight upload sessions (handlers_files.go).
 	uploads map[string]*uploadSession
@@ -172,6 +175,7 @@ func newStore(model Model, tenant string, membersExpandCap int) *store {
 		teams:            map[string]*teamRec{},
 		chats:            map[string]*chatRec{},
 		drives:           map[string]*driveRec{},
+		myDrive:          model.MyDriveID,
 		nextID:           idBase,
 	}
 	s.seedLocked(model)
@@ -200,6 +204,9 @@ func (s *store) seedLocked(m Model) {
 	}
 	for _, d := range m.Drives {
 		s.addDriveLocked(d)
+	}
+	if s.myDrive == "" {
+		s.myDrive = m.MyDriveID
 	}
 	// Channel file folders are derived after drives are seeded, so a drive
 	// seeded with the same id keeps its items.

@@ -121,6 +121,12 @@ func splitPath(p string) []string {
 
 // matchPattern matches a path against a pattern whose "{name}" segments capture
 // a single segment.
+//
+// A pattern segment may also carry a literal suffix after the placeholder
+// ("{file-name}:"), which is how the colon-addressed drive routes are matched:
+// "/drives/{drive-id}/items/{parent-ref}:/{file-name}:/content" captures
+// "parent-ref" and "file-name" without the colons that delimit them
+// (refs/graph/api-reference/v1.0/api/driveitem-put-content.md:48).
 func matchPattern(pattern, path string) (map[string]string, bool) {
 	ps := splitPath(pattern)
 	qs := splitPath(path)
@@ -129,14 +135,21 @@ func matchPattern(pattern, path string) (map[string]string, bool) {
 	}
 	var params map[string]string
 	for i := range ps {
-		if strings.HasPrefix(ps[i], "{") && strings.HasSuffix(ps[i], "}") {
-			if qs[i] == "" {
+		if name, suffix, ok := patternParam(ps[i]); ok {
+			value := qs[i]
+			if value == "" {
 				return nil, false
+			}
+			if suffix != "" {
+				if len(value) <= len(suffix) || !strings.HasSuffix(strings.ToLower(value), strings.ToLower(suffix)) {
+					return nil, false
+				}
+				value = value[:len(value)-len(suffix)]
 			}
 			if params == nil {
 				params = make(map[string]string, 4)
 			}
-			params[ps[i][1:len(ps[i])-1]] = qs[i]
+			params[name] = value
 			continue
 		}
 		if !strings.EqualFold(ps[i], qs[i]) {
@@ -147,6 +160,20 @@ func matchPattern(pattern, path string) (map[string]string, bool) {
 		params = map[string]string{}
 	}
 	return params, true
+}
+
+// patternParam reports whether a pattern segment captures a path parameter, and
+// returns the parameter's name and the literal that follows it ("{file-name}:"
+// has the suffix ":").
+func patternParam(segment string) (name, suffix string, ok bool) {
+	if !strings.HasPrefix(segment, "{") {
+		return "", "", false
+	}
+	end := strings.IndexByte(segment, '}')
+	if end <= 1 {
+		return "", "", false
+	}
+	return segment[1:end], segment[end+1:], true
 }
 
 // matchRoutes returns the routes matching method and path, plus the captured

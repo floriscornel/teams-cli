@@ -7,3 +7,33 @@ stderr 'write command'
 env TEAMS_READ_ONLY=1
 ! exec teams auth logout
 stderr 'read-only'
+
+# The Phase 4 writes are refused before any network call, and the refusal names
+# the command.
+! exec teams post Engineering/General hi
+stderr 'teams post is a write command'
+! exec teams reply Engineering/General/m-1001 hi
+stderr 'teams reply is a write command'
+! exec teams edit Engineering/General/m-1001 hi
+stderr 'teams edit is a write command'
+! exec teams delete Engineering/General/m-1001
+stderr 'teams delete is a write command'
+! exec teams react Engineering/General/m-1001 x
+stderr 'teams react is a write command'
+! exec teams chat create --with bob@example.com
+stderr 'teams chat create is a write command'
+! exec teams chat add-member 19:bob@thread.v2 bob@example.com
+stderr 'teams chat add-member is a write command'
+! exec teams chat delete 19:bob@thread.v2 --yes
+stderr 'teams chat delete is a write command'
+! exec teams chat mark-read 19:bob@thread.v2
+stderr 'teams chat mark-read is a write command'
+! exec teams chat mark-unread 19:bob@thread.v2
+stderr 'teams chat mark-unread is a write command'
+# `teams api` is a write only when its method is: a raw GET stays available, so
+# read-only mode does not close the escape hatch on reads.
+! exec teams api POST /me/chats -f chatType=group
+stderr 'teams api is a write command'
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+exec teams --read-only api GET /me --jq '.id'
+stdout '^user-1$'

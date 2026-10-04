@@ -110,6 +110,15 @@ var documentedQueryOptions = map[string][]string{
 	"GET /drives/{drive-id}/items/{driveItem-id}/content":              {"$format"},
 	"PUT /drives/{drive-id}/items/{driveItem-id}/content":              {},
 	"POST /drives/{drive-id}/items/{driveItem-id}/createUploadSession": {},
+	"POST /drives/{drive-id}/items/{driveItem-id}/createLink":          {},
+	"GET /me/drive": {"$select"},
+	// The colon-addressed upload routes take no query options. They are
+	// fake-only (see routes.go): the api-reference documents the path form, and
+	// Microsoft's OpenAPI description does not model it at all.
+	"PUT /drives/{drive-id}/items/{parent-ref}:/{file-name}:/content":                            {},
+	"PUT /drives/{drive-id}/items/{parent-ref}:/{folder-name}/{file-name}:/content":              {},
+	"POST /drives/{drive-id}/items/{parent-ref}:/{file-name}:/createUploadSession":               {},
+	"POST /drives/{drive-id}/items/{parent-ref}:/{folder-name}/{file-name}:/createUploadSession": {},
 
 	// $batch takes no query options (json-batching.md).
 	"POST /$batch": {},

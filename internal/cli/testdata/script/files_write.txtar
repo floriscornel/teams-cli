@@ -1,0 +1,54 @@
+# File attachments and inline images: a file goes to the drive and is referenced
+# as an attachment, an image rides in the message POST as hosted content, and
+# --dry-run plans the upload without doing it.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# A text file is uploaded to the channel's SharePoint folder, and the message
+# carries the attachment reference the upload's eTag id names.
+exec teams post Engineering/General 'notes attached' --file notes.txt
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].attachments[0].name'
+stdout 'notes.txt'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].attachments[0].contentType'
+stdout 'reference'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout '<attachment id="'
+# The upload really happened: the file is in the channel's folder.
+exec teams channel files Engineering/General --json --jq '[.[] | select(.name=="notes.txt")][0].name'
+stdout 'notes.txt'
+
+# An image rides inline as hosted content: the body references
+# ../hostedContents/{id}/$value and the temporaryId is the same id (the fake
+# refuses a POST whose body does not reference the temporaryId, so a 201 proves
+# the pairing).
+exec teams post Engineering/General 'the chart' --file chart.svg
+stdout 'posted'
+exec teams channel read Engineering/General --limit 1 --json --jq '.[0].body.content'
+stdout 'hostedContents/1/\$value'
+# It is an image, so nothing was uploaded into the drive for it.
+exec teams channel files Engineering/General --json --jq '[.[] | select(.name=="chart.svg")] | length'
+stdout '0'
+
+# --dry-run reports the upload it would do and sends nothing.
+exec teams post Engineering/General 'later' --file notes.txt --dry-run
+stdout '"uploads"'
+stdout '"kind": "attachment"'
+stdout '"contentType": "text/plain"'
+stdout '"size": 15'
+exec teams post Engineering/General 'later' --file chart.svg --dry-run
+stdout '"kind": "inline image"'
+stdout '"contentType": "image/svg'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.body.content=="<p>later</p>")] | length'
+stdout '0'
+
+# A chat attachment goes into the caller's own OneDrive and needs a sharing link
+# for the recipient (refs/teams-mcp/src/utils/file-upload.ts:270-303).
+exec teams post 19:bob@thread.v2 'for you' --file notes.txt
+stdout 'posted'
+exec teams chat read 19:bob@thread.v2 --json --jq '[.[] | select(.attachments[0].name=="notes.txt")][0].attachments[0].contentUrl'
+stdout '_download'
+
+-- notes.txt --
+# deploy notes
+-- chart.svg --
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>

@@ -70,6 +70,7 @@ type App struct {
 	resolverc   *ref.Resolver
 	entityCache *store.EntityCache
 	aliases     map[string]string
+	me          *graph.Me
 }
 
 // New builds an App around the given streams. The Printer is built here rather
@@ -326,7 +327,7 @@ func (a *App) newRootCmd() *cobra.Command {
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			interactive := output.DetectInteractive(a.Stdin, a.Stdout, a.noInputFlag)
 			a.Printer = output.New(output.Options{
 				Out:         a.Stdout,
@@ -339,7 +340,7 @@ func (a *App) newRootCmd() *cobra.Command {
 				Interactive: interactive,
 			})
 			if a.readOnlyFlag || config.ParseBoolEnv(a.environ(), config.EnvReadOnly) {
-				if isWriteCommand(cmd) {
+				if isWriteCommand(cmd, args) {
 					return output.WithHint(output.Usagef("%s is a write command and this session is read-only", cmd.CommandPath()),
 						"drop --read-only / TEAMS_READ_ONLY=1, or use a profile with mode = \"full\"")
 				}
@@ -384,7 +385,9 @@ func (a *App) newRootCmd() *cobra.Command {
 		a.newProfileCmd(),
 		a.newConfigCmd(),
 		a.newVersionCmd(),
-		// Phase 3: the read commands.
+	)
+	// Phase 3: the read commands.
+	root.AddCommand(
 		a.newTeamCmd(),
 		a.newChannelCmd(),
 		a.newChatCmd(),
@@ -396,21 +399,50 @@ func (a *App) newRootCmd() *cobra.Command {
 		a.newFileCmd(),
 		a.newAliasCmd(),
 	)
+	// Phase 4: the write commands.
+	root.AddCommand(
+		a.newPostCmd(),
+		a.newReplyCmd(),
+		a.newEditCmd(),
+		a.newDeleteCmd(),
+		a.newReactCmd(),
+		a.newAPICmd(),
+	)
 	return root
 }
 
-// isWriteCommand reports whether a command changes anything in Teams. The list
-// grows with Phase 4; it is a safety check that runs before any network call.
-func isWriteCommand(cmd *cobra.Command) bool {
+// isWriteCommand reports whether a command changes anything in Teams. It runs in
+// PersistentPreRunE, before any network call, so read-only mode refuses a write
+// with exit 2 and a fix (PLAN.md:180).
+//
+// The list is the Phase 4 surface; `api` is decided by its method argument,
+// because a raw GET is a read and a raw POST is not.
+func isWriteCommand(cmd *cobra.Command, args []string) bool {
 	for c := cmd; c != nil; c = c.Parent() {
 		switch c.Name() {
 		case "post", "reply", "edit", "delete", "react":
 			return true
 		case "login", "logout", "mark-read", "mark-unread", "add-member", "create":
 			return true
+		case "api":
+			return apiWrites(args)
 		}
 	}
 	return false
+}
+
+// apiWrites reports whether a `teams api` invocation changes anything: only GET
+// and HEAD are reads (PLAN.md:180 blocks write commands before any network call).
+func apiWrites(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	switch strings.ToUpper(strings.TrimSpace(args[0])) {
+	case "GET", "HEAD":
+		return false
+	default:
+		return true
+	}
 }
 
 // requireScope fails with exit 3 before any Graph call when the token does not

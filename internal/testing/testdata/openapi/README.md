@@ -128,6 +128,12 @@ contract hook skips them with the same citation.
 | `GET /groups/{group-id}/drive/items/{item-id}` and its `/children`, `/content` and `/createUploadSession` variants | `driveitem-get.md`, `driveitem-get-content.md`, `driveitem-put-content.md` and `driveitem-createuploadsession.md` document them, but Microsoft's description models the group drive differently (`/groups/{group-id}/drive` and `/groups/{group-id}/drives/{drive-id}`, with no item collection under either). There is nothing to validate against, so the `/drives/{drive-id}/items/{driveItem-id}/...` form is committed instead. |
 | `GET /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/hostedContents/{hosted-content-id}/$value` (a channel message's inline image) | The description declares the path, but the api-reference page that documents the operation lists only the container without the `/$value` suffix (`chatmessagehostedcontent-get.md`, "HTTP request"), so the route-list invariant cannot see it. `teams file download` still fetches the bytes, because the message body's own `<img src="../hostedContents/1/$value">` reference requires it (`chatmessage-post.md`). |
 | The chat reply routes | The api-reference's replies page documents the channel form only, and `chatmessage-get.md` documents the channel reply form. Committing a route that its own cited page does not describe would make the route-list invariant meaningless. |
+| The colon-addressed drive routes: `PUT /drives/{drive-id}/items/{parent-id}:/{filename}:/content` and `POST …/createUploadSession` | These are how a file that does not exist yet is created, and `driveitem-put-content.md` and `driveitem-createuploadsession.md` document both. Microsoft's description does not model colon addressing at all — it has no path containing `:/` under `/drives` — so there is no shape to validate against. `fakegraph` implements them (they are the Phase 4 upload path) and its contract hook skips them with this citation. |
+
+One response shape is skipped rather than a route: **204 No Content**, which Graph documents
+for PATCH, softDelete and the two reaction actions. The description declares the status but no
+body, and the validator injects `Content-Type: application/json`, so an intentionally empty
+body parses as `EOF`; the request is still validated in full.
 
 ## Checking that the committed files are current
 

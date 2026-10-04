@@ -184,6 +184,34 @@ func (p *Printer) JSON(v any) error {
 	return nil
 }
 
+// JSONBytes writes an already-encoded JSON document, re-indented, through the
+// same --jq path JSON uses.
+//
+// It is the printer for `teams api`, where the response is a document the CLI
+// did not build and does not model: printing it as a Go value would mean
+// decoding and re-encoding something whose schema is whatever Graph returned.
+// A body that is not JSON at all is not accepted here (the caller writes it
+// verbatim instead).
+func (p *Printer) JSONBytes(raw []byte) error {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, bytes.TrimSpace(raw), "", "  "); err != nil {
+		// Not JSON after all: write it unchanged rather than failing the
+		// command, because the response is still the answer.
+		if _, werr := p.out.Write(raw); werr != nil {
+			return &Error{Code: CodeError, Msg: "write the response", Err: werr}
+		}
+		return nil
+	}
+	buf.WriteByte('\n')
+	if p.jq != "" {
+		return ApplyJQ(p.out, p.jq, buf.Bytes())
+	}
+	if _, err := p.out.Write(buf.Bytes()); err != nil {
+		return &Error{Code: CodeError, Msg: "write JSON output", Err: err}
+	}
+	return nil
+}
+
 func (p *Printer) bold(s string) string {
 	if !p.color {
 		return s

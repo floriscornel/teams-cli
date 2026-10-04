@@ -46,7 +46,8 @@ esac
 
 # 2. Help lists the user-facing commands.
 help_output=$("$binary" --help)
-for command in auth cache config doctor profile whoami team channel chat thread search mentions user unread file alias; do
+for command in auth cache config doctor profile whoami team channel chat thread search mentions user unread file alias \
+  post reply edit delete react api; do
   case "$help_output" in
     *"$command"*) ;;
     *) fail "--help does not list $command" ;;
@@ -80,6 +81,23 @@ read_code=$?
 set -e
 [ "$read_code" -eq 3 ] || fail "team list without an account exited $read_code, want 3"
 pass "read commands require an account (exit 3)"
+
+# 4a. A write command without an account is an auth failure too, and the
+#     read-only switch refuses it before anything else (exit 2).
+set +e
+"$binary" post Engineering/General hi >/dev/null 2>&1
+write_code=$?
+set -e
+[ "$write_code" -eq 3 ] || fail "post without an account exited $write_code, want 3"
+
+set +e
+readonly_output=$("$binary" --read-only post Engineering/General hi 2>&1)
+readonly_code=$?
+set -e
+case "$readonly_code:$readonly_output" in
+  2:*"read-only"*) pass "write commands require an account, and read-only refuses them" ;;
+  *) fail "a read-only write exited $readonly_code: $readonly_output" ;;
+esac
 
 # 4b. A reference that cannot identify a message is a usage error with a hint.
 set +e

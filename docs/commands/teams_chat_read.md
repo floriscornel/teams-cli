@@ -41,5 +41,5 @@ teams chat read <chat> [flags]
 
 ### SEE ALSO
 
-* [teams chat](teams_chat.md)	 - List, show and read your chats
+* [teams chat](teams_chat.md)	 - List, show, read and manage your chats
 

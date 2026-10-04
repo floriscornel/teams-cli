@@ -1,6 +1,6 @@
 ## teams chat
 
-List, show and read your chats
+List, show, read and manage your chats
 
 ### Options
 
@@ -25,7 +25,12 @@ List, show and read your chats
 ### SEE ALSO
 
 * [teams](teams.md)	 - Search, read and post in Microsoft Teams from the terminal
+* [teams chat add-member](teams_chat_add-member.md)	 - Add one or more members to a chat
+* [teams chat create](teams_chat_create.md)	 - Create a group chat or a one-on-one chat
+* [teams chat delete](teams_chat_delete.md)	 - Delete a chat (needs admin consent, requested on demand)
 * [teams chat list](teams_chat_list.md)	 - List your chats, newest activity first
+* [teams chat mark-read](teams_chat_mark-read.md)	 - Mark a chat read
+* [teams chat mark-unread](teams_chat_mark-unread.md)	 - Mark a chat unread
 * [teams chat read](teams_chat_read.md)	 - Read a chat's messages
 * [teams chat show](teams_chat_show.md)	 - Show one chat
 

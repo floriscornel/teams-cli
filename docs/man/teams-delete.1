@@ -1,0 +1,74 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-delete - Delete a message (soft delete)
+
+
+.SH SYNOPSIS
+\fBteams delete  [flags]\fP
+
+
+.SH DESCRIPTION
+Delete a message the way Teams does: a soft delete, which keeps the id and
+leaves a tombstone in the conversation
+(refs/graph/api-reference/v1.0/api/chatmessage-softdelete.md).
+
+.PP
+A chat message is deleted through the user-relative route the docs document
+(POST /users/{user-id}/chats/{chat-id}/messages/{id}/softDelete), because the
+/chats form answers 405 (docs/spike/phase1.md:99).
+
+
+.SH OPTIONS
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for delete
+
+.PP
+\fB--team\fP=""
+	team the channel belongs to, when the reference does not say
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP

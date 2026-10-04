@@ -1,0 +1,69 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-chat-add-member - Add one or more members to a chat
+
+
+.SH SYNOPSIS
+\fBteams chat add-member   [flags]\fP
+
+
+.SH DESCRIPTION
+Add members to a chat. Each one is added with the documented owner role: a
+guest role is a tenant decision, and \fBmember\fR is not accepted in the delegated
+flow (refs/graph/api-reference/v1.0/api/chat-post.md:47).
+
+.PP
+Every member is attempted, so one failure does not hide the others; the
+command exits 1 when any of them failed.
+
+
+.SH OPTIONS
+\fB--dry-run\fP[=false]
+	print the Graph requests without sending them
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for add-member
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-chat(1)\fP

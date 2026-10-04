@@ -107,6 +107,13 @@ var routes = []Route{
 	{"PATCH", "/chats/{chat-id}/messages/{chatMessage-id}", "chatmessage-update.md"},
 	{"POST", "/chats/{chat-id}/messages/replyWithQuote", "chatmessage-replywithquote.md"},
 	{"POST", "/chats/{chat-id}/messages/{chatMessage-id}/softDelete", "chatmessage-softdelete.md"},
+	// A chat message's soft delete is documented only under the user-relative
+	// path (chatmessage-softdelete.md:58), and that is the form the live service
+	// answers 204 to: the spike got 405 from the /chats form
+	// (docs/spike/phase1.md:99). The /chats entry above stays because the
+	// api-reference's own "Request" section is expressed container-less for
+	// chatMessage, but the CLI calls this one.
+	{"POST", "/users/{user-id}/chats/{chat-id}/messages/{chatMessage-id}/softDelete", "chatmessage-softdelete.md"},
 	{"POST", "/chats/{chat-id}/messages/{chatMessage-id}/setReaction", "chatmessage-setreaction.md"},
 	{"POST", "/chats/{chat-id}/messages/{chatMessage-id}/unsetReaction", "chatmessage-unsetreaction.md"},
 	// Replies inside a chat are read through GET /chats/{chat-id}/messages:
@@ -138,11 +145,17 @@ var routes = []Route{
 	// nothing. They stay out of the contract layer and are covered by fakegraph
 	// instead.
 	{"GET", "/teams/{team-id}/channels/{channel-id}/filesFolder", "channel-get-filesfolder.md"},
+	// The caller's own OneDrive and a sharing link for an uploaded item are the
+	// chat-attachment path: a chat file goes into the user's drive, and a
+	// recipient needs a sharing link rather than the file's own URL
+	// (PLAN.md:221; refs/teams-mcp/src/utils/file-upload.ts:256,270-303).
+	{"GET", "/me/drive", "drive-get.md"},
 	{"GET", "/drives/{drive-id}/items/{driveItem-id}", "driveitem-get.md"},
 	{"GET", "/drives/{drive-id}/items/{driveItem-id}/children", "driveitem-list-children.md"},
 	{"GET", "/drives/{drive-id}/items/{driveItem-id}/content", "driveitem-get-content.md"},
 	{"PUT", "/drives/{drive-id}/items/{driveItem-id}/content", "driveitem-put-content.md"},
 	{"POST", "/drives/{drive-id}/items/{driveItem-id}/createUploadSession", "driveitem-createuploadsession.md"},
+	{"POST", "/drives/{drive-id}/items/{driveItem-id}/createLink", "driveitem-createlink.md"},
 }
 
 // Routes returns the committed route list as "METHOD /path" lines, sorted by

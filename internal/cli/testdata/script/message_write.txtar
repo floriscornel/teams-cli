@@ -1,0 +1,71 @@
+# edit, delete and react: the three single-message actions, on a channel message
+# and on a chat message.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# edit changes the body; the replyToId-less root is addressed directly.
+exec teams edit Engineering/General/m-1002 'Hello @Yuki Tanaka, the deploy is on hold' --subject 'Deploy v2'
+stdout 'edited m-1002'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].body.content'
+stdout 'deploy is on hold'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].subject'
+stdout 'Deploy v2'
+
+# A reply is edited through its root.
+exec teams edit Engineering/General/m-1002 --subject 'Deploy v3' --text 'plain words'
+stdout 'edited'
+exec teams thread read Engineering/General/m-1002 --json --jq '[.replies[] | select(.id=="m-1003")][0].body.content'
+stdout 'On it.'
+
+# --dry-run prints the PATCH and changes nothing.
+exec teams edit Engineering/General/m-1002 'never applied' --dry-run
+stdout '"method": "PATCH"'
+stdout '"path": "/teams/team-eng/channels/19:general@thread.tacv2/messages/m-1002"'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].body.content'
+stdout 'plain words'
+
+# A chat message edit goes through /chats/{id}/messages/{id}.
+exec teams edit 'https://teams.microsoft.com/l/message/19:bob@thread.v2/c-2?context=%7B%22contextType%22%3A%22chat%22%7D' 'sure, at 12:30'
+stdout 'edited c-2'
+exec teams chat read 19:bob@thread.v2 --json --jq '[.[].body.content] | join("|")'
+stdout 'sure, at 12:30'
+
+# edit cannot add attachments: a PATCH only changes the body and the subject.
+! exec teams edit Engineering/General/m-1002 hi --file notes.txt
+stderr 'only changes the body and the subject'
+
+# react adds one reaction per user, and --remove takes it back.
+exec teams react Engineering/General/m-1002 👍
+stdout 'reacted'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].reactions | length'
+stdout '3'
+exec teams react Engineering/General/m-1002 👍 --remove
+stdout 'removed'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1002")][0].reactions | length'
+stdout '2'
+
+# A chat reaction uses the /chats form the docs give it.
+exec teams react 'https://teams.microsoft.com/l/message/19:bob@thread.v2/c-1?context=%7B%22contextType%22%3A%22chat%22%7D' ❤
+stdout 'reacted'
+exec teams chat read 19:bob@thread.v2 --json --jq '[.[] | select(.id=="c-1")][0].reactions[0].reactionType'
+stdout '❤'
+
+exec teams react Engineering/General/m-1002 👍 --dry-run
+stdout '"path": "/teams/team-eng/channels/19:general@thread.tacv2/messages/m-1002/setReaction"'
+stdout '"reactionType": "👍"'
+
+# delete is a soft delete: the message keeps its id and shows a tombstone.
+exec teams delete Engineering/General/m-1001
+stdout 'deleted m-1001'
+exec teams thread read Engineering/General/m-1001 --json --jq '.root.deletedDateTime != null'
+stdout 'true'
+exec teams channel read Engineering/General --json --jq '[.[] | select(.id=="m-1001")] | length'
+stdout '0'
+
+# A chat message delete goes through the user-relative route the docs document.
+exec teams delete 'https://teams.microsoft.com/l/message/19:bob@thread.v2/c-1?context=%7B%22contextType%22%3A%22chat%22%7D'
+stdout 'deleted c-1'
+exec teams chat read 19:bob@thread.v2 --json --jq '[.[] | select(.id=="c-1")] | length'
+stdout '0'
+
+exec teams delete Engineering/General/m-1002 --dry-run
+stdout '"path": "/teams/team-eng/channels/19:general@thread.tacv2/messages/m-1002/softDelete"'

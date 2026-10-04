@@ -1,0 +1,100 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-edit - Edit a message you sent
+
+
+.SH SYNOPSIS
+\fBteams edit  [text|-] [flags]\fP
+
+
+.SH DESCRIPTION
+Edit a message's body (and, with --subject, its subject).
+
+.PP
+Only the body and the subject are editable, which is what the delegated PATCH
+documents (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45);
+attachments cannot be added to an existing message, so --file is refused.
+
+
+.SH OPTIONS
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
+
+.PP
+\fB--file\fP=[]
+	file to attach (repeatable); an image up to 4 MB is embedded inline
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for edit
+
+.PP
+\fB--html\fP[=false]
+	send the text as HTML, sanitized against the Teams allow-list
+
+.PP
+\fB--importance\fP=""
+	message importance: high or urgent (default normal)
+
+.PP
+\fB--md\fP[=true]
+	treat the text as markdown (the default)
+
+.PP
+\fB--mention\fP=[]
+	person to mention (repeatable); the text must name them, e.g. @alice
+
+.PP
+\fB--subject\fP=""
+	subject line (channels and chats both store one)
+
+.PP
+\fB--team\fP=""
+	team the channel belongs to, when the reference does not say
+
+.PP
+\fB--text\fP[=false]
+	send the text verbatim, without markdown or HTML
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP

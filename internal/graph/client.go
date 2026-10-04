@@ -211,6 +211,20 @@ type Request struct {
 	Query url.Values
 	// Body is marshalled as JSON when non-nil.
 	Body any
+	// Raw is sent verbatim and takes precedence over Body. It is how an upload
+	// PUT sends file bytes (which JSON encoding would base64) and how
+	// `teams api --input` sends a body the caller wrote.
+	Raw []byte
+	// ContentType overrides the Content-Type header, which otherwise defaults to
+	// application/json whenever a body is present. An upload sets the file's own
+	// media type.
+	ContentType string
+	// PreAuthorized marks a request to a URL the service handed out (an upload
+	// session URL). Such a URL can be on another host, and the docs warn that
+	// sending an Authorization header to it can answer 401
+	// (refs/graph/api-reference/v1.0/api/driveitem-createuploadsession.md:242),
+	// so the bearer token is not attached and the host check is skipped.
+	PreAuthorized bool
 	// Header carries per-request headers (Prefer, Content-Type overrides).
 	Header http.Header
 }
@@ -255,7 +269,10 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 		return nil, errors.New("graph: request path is required")
 	}
 	var bodyBytes []byte
-	if req.Body != nil {
+	switch {
+	case req.Raw != nil:
+		bodyBytes = req.Raw
+	case req.Body != nil:
 		if raw, ok := req.Body.(json.RawMessage); ok {
 			bodyBytes = raw
 		} else {
@@ -265,7 +282,7 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 			}
 		}
 	}
-	urlStr, err := c.resolveURL(req.Path, req.Query)
+	urlStr, err := c.resolveURL(req.Path, req.Query, req.PreAuthorized)
 	if err != nil {
 		return nil, err
 	}
@@ -367,8 +384,10 @@ func (c *Client) attempt(ctx context.Context, req Request, urlStr string, body [
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	if err := c.authorize(ctx, httpReq); err != nil {
-		return nil, err
+	if !req.PreAuthorized {
+		if err := c.authorize(ctx, httpReq); err != nil {
+			return nil, err
+		}
 	}
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("User-Agent", c.userAgent)
@@ -376,7 +395,10 @@ func (c *Client) attempt(ctx context.Context, req Request, urlStr string, body [
 	// (refs/openapi/openapi/v1.0/openapi.yaml:941262-941276) and MSAL Go sends it
 	// on Entra calls (refs/msal-go/apps/internal/oauth/ops/internal/comm/comm.go:301-304).
 	httpReq.Header.Set("client-request-id", newRequestID())
-	if body != nil {
+	switch {
+	case req.ContentType != "":
+		httpReq.Header.Set("Content-Type", req.ContentType)
+	case body != nil:
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 	for k, vs := range req.Header {
@@ -435,15 +457,16 @@ func (c *Client) authorize(ctx context.Context, req *http.Request) error {
 // resolveURL turns a path or an absolute nextLink into a URL. Next links are
 // followed verbatim as documented (refs/graph/concepts/paging.md:91); only a
 // link pointing at another host is refused, because following it would send the
-// bearer token to that host.
-func (c *Client) resolveURL(path string, query url.Values) (string, error) {
+// bearer token to that host. A pre-authorized URL (an upload session) is the
+// documented exception: it lives on another host and carries no token.
+func (c *Client) resolveURL(path string, query url.Values, trustedHost bool) (string, error) {
 	var out string
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		u, err := url.Parse(path)
 		if err != nil {
 			return "", fmt.Errorf("graph: invalid URL %q: %w", path, err)
 		}
-		if !strings.EqualFold(u.Host, c.baseHost) {
+		if !strings.EqualFold(u.Host, c.baseHost) && !trustedHost {
 			return "", fmt.Errorf("graph: refusing to follow a link to %s (expected %s)", u.Host, c.baseHost)
 		}
 		out = path

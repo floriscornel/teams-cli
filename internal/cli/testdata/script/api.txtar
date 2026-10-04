@@ -1,0 +1,52 @@
+# teams api: the raw Graph escape hatch. A GET, a POST built from -f fields, a
+# body from --input, a non-JSON response, and the error mapping.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# A raw read goes through the same client, printer and --jq path as any command.
+exec teams api GET /me --jq '.id'
+stdout '^user-1$'
+
+# A dotted -f nests the field, which is what a wrapped body property needs.
+exec teams api POST /chats/19:release-train@thread.v2/markChatReadForUser -f user.id=user-1
+exec teams chat list --unread --json --jq 'length'
+stdout '0'
+
+# --input is the whole body; here a search request the CLI builds itself.
+exec teams api POST /search/query --input search.json --jq '.value[0].hitsContainers[0].total'
+stdout '^1$'
+
+# A JSON body on stdin works the same way.
+stdin search.json
+exec teams api POST /search/query --input -
+stdout '"total": 1'
+
+# A response that is not JSON is written verbatim: this one is the pre-signed
+# download the /content route redirects to.
+exec teams api GET /drives/drive-eng/items/item-1/content
+stdout 'deploy'
+
+# Graph errors keep their exit code and their message.
+! exec teams api GET /users/does-not-exist
+stderr 'HTTP 404'
+
+# --dry-run prints the request, including the field types -F keeps.
+exec teams api POST /anything -f name=hi -F count=3 -F flag=true -F blank=null --dry-run
+stdout '"count": 3'
+stdout '"flag": true'
+stdout '"name": "hi"'
+stdout '"blank": null'
+
+# -f and --input cannot be combined: there is no defined merge.
+! exec teams api POST /anything -f a=b --input search.json
+stderr 'do not combine'
+
+# A field that is not key=value is a usage error.
+! exec teams api POST /anything -f nonsense
+stderr 'use key=value'
+
+# Only the documented methods are accepted.
+! exec teams api TRACE /me
+stderr 'not a supported HTTP method'
+
+-- search.json --
+{"requests":[{"entityTypes":["chatMessage"],"query":{"queryString":"ship it"}}]}

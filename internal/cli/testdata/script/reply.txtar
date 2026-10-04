@@ -1,0 +1,31 @@
+# reply: a channel thread reply and a chat quote reply (chats have no threads),
+# plus --dry-run.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_WRITE_TOKEN
+
+# A channel reply lands in the root's thread.
+exec teams reply Engineering/General/m-1001 'on it, will check'
+stdout 'replied'
+exec teams thread read Engineering/General/m-1001 --json --jq '.replies[0].body.content'
+stdout 'on it, will check'
+
+# A link to a reply addresses the thread through its root (parentMessageId).
+exec teams reply 'https://teams.microsoft.com/l/message/19:general@thread.tacv2/m-1003?groupId=team-eng&parentMessageId=m-1002' 'and it is done'
+stdout 'replied'
+exec teams thread read Engineering/General/m-1002 --json --jq '[.replies[].body.content] | length'
+stdout '2'
+
+# A chat reply is a quote reply: replyWithQuote with the message in messageIds.
+exec teams reply 'https://teams.microsoft.com/l/message/19:bob@thread.v2/c-1?context=%7B%22contextType%22%3A%22chat%22%7D' 'sure thing'
+stdout 'replied'
+exec teams chat read 19:bob@thread.v2 --limit 1 --json --jq '.[0].body.content'
+stdout 'sure thing'
+
+# --dry-run prints the documented replyWithQuote body.
+exec teams reply 'https://teams.microsoft.com/l/message/19:bob@thread.v2/c-1?context=%7B%22contextType%22%3A%22chat%22%7D' quoted --dry-run
+stdout '"path": "/chats/19:bob@thread.v2/messages/replyWithQuote"'
+stdout '"messageIds"'
+stdout '"c-1"'
+
+# A message reference is required: a bare id has no container.
+! exec teams reply m-1001 hi
+stderr 'does not identify a message'

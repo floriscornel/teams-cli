@@ -527,10 +527,84 @@ The results are in [docs/spike/phase1.md](docs/spike/phase1.md), with the throwa
   than asking Graph for one chat; `file download` cannot reach a chat attachment in SharePoint; and the search
   page cache PLAN.md mentions is not built (search is cheap enough to run once per command).
 
-### Phase 4: Write
+### Phase 4: Write (done 2026-10-04, open items listed)
 `post`/`reply`/`edit`/`delete`/`react`, markdown and mentions, file and image attachments,
 `reply` via `replyWithQuote` for chats, `chat create/add-member/delete` (incremental consent for delete), `chat mark-read|mark-unread`,
 `--dry-run`, read-only enforcement, scope-tier enforcement, `teams api`.
+
+#### What Phase 4 actually shipped, and the decisions it forced
+- **Landed:** `post`, `reply`, `edit`, `delete`, `react`, `chat create|add-member|delete|mark-read|mark-unread` and
+  `teams api`; the write half of `internal/format` (goldmark + bluemonday, mention generation, content-type sniffing);
+  `internal/graph` gained `messages_write.go`, `chats_write.go` and `files_write.go` (post, reply, quote reply, PATCH,
+  soft delete, reactions, chat create/add-member/delete, read state, and the upload flow: filesFolder/`/me/drive`,
+  simple PUT, upload session, `createLink`); `fakegraph` gained the drive endpoints and a route matcher that understands
+  a placeholder with a literal suffix; the Layer 6 route list gained `GET /me/drive`,
+  `POST /drives/{drive-id}/items/{driveItem-id}/createLink` and the user-relative chat soft delete; nine testscript
+  scripts cover the new surface, and each script now runs against **its own** fake Graph (a shared one let a write in one
+  script change what another script saw).
+- **The order inside `buildPayload` is the contract.** The body is sanitized first and mentions are inserted afterwards,
+  because `<at>` is not in the Teams allow-list: a sanitizer pass over the assembled body silently drops every mention
+  (PLAN.md:179). A golden test in `internal/format` pins it, and the fakegraph POST handler refuses a `mentions[]` entry
+  whose `<at id="N">` is missing, so a regression fails a test rather than a tenant.
+- **Mentions are three fixes over the MCP:** one `<at>` per *user* (the MCP emits one per mapping, so a person named
+  twice got two entries), `mentioned.user.displayName` and `userIdentityType: "aadUser"` are sent (the documented
+  example sends them, the MCP omits them), and a `--mention` whose text is nowhere in the body is a **usage error**
+  instead of a `mentions[]` entry with no matching tag. The spellings tried are, in order: what the user typed (minus
+  `@`), the alias, the display name, and the local part of the address.
+- **The sanitizer is the MCP's allow-list, ported to bluemonday, with one deliberate divergence:** when a URL attribute
+  fails the scheme check, DOMPurify drops the attribute and keeps the element while bluemonday drops both (keeping the
+  text). That is strictly narrower, it is pinned by a test, and it is the only place the two libraries disagree on the
+  shape of the output rather than on what is allowed.
+- **The scope gate runs before any Graph call, which forced `classifyChat`.** Resolving a name needs the network, so a
+  command cannot know whether `post <ref>` is a channel or a chat write until it has already called Graph — which
+  contradicts PLAN.md:66. The reference's *shape* decides instead (a name path with a slash, a channel link or a channel
+  id is a channel; a chat link or id, `@person`, an address or a bare name is a chat), and `post`/`reply`/`edit`/`delete`/
+  `react` gate their scopes on that before resolving anything.
+- **`--dry-run` prints one documented document** (`{dryRun, method, path, body, paths, uploads, notes}`) through the normal
+  JSON path, so `--jq` works on it. Files are the one thing it cannot fully show: an attachment reference needs the id and
+  URL the *upload* returns, so a dry run lists the planned uploads instead and the printed body has no attachment entry
+  for them.
+- **File uploads follow the MCP's flow with the documented numbers:** one PUT at or below 4 MiB (our policy — the
+  documented ceiling for a single PUT is 250 MB), otherwise an upload session with 3.2 MiB chunks (ten 320 KiB blocks,
+  inside the documented 5–10 MiB recommendation), the eTag GUID as the attachment id, and for a chat the
+  `organization` → `users` → own-URL `createLink` fallback. An image up to the documented 4 MB hosted-content cap is
+  embedded inline through `hostedContents[]`, with the `temporaryId` the body references; anything else is uploaded and
+  referenced as an attachment.
+- **The colon-addressed upload routes are fake-only, deliberately.** Creating a file that does not exist yet is
+  `PUT /drives/{drive-id}/items/{parent}:/{name}:/content` (and the same shape for `createUploadSession`), which the
+  api-reference documents but Microsoft's OpenAPI description does not model at all — it has no path containing `:/`
+  under `/drives`. Rather than encode fake item references, the fake implements the documented path form, its contract
+  hook exempts it with the citation, and the bytes on the wire are asserted by the graph tests instead. The
+  `/groups/{group-id}/drive/…` spelling stays out for the same reason it did in Phase 3.
+- **A chat message's soft delete needs the caller's own id.** The documented route is
+  `POST /users/{user-id}/chats/{chat-id}/messages/{id}/softDelete` and the `/chats/…` form answered **405** live
+  (docs/spike/phase1.md:99), so `delete` on a chat message resolves `GET /me` first and the committed route list gained
+  the user-relative form. Chat reactions and read state keep the `/chats/…` form the docs give them.
+- **`chat delete` is the incremental-consent case.** `Chat.ManageDeletion.All` needs admin consent and is in no preset, so
+  the command re-runs the sign-in with that scope added on a terminal (after asking), and in non-interactive mode fails
+  with exit 3 and the text of the admin request. A chat delete is also confirmed (`--yes` in non-interactive mode);
+  a message delete is not, because Teams' soft delete is what the `delete` command itself is.
+- **`teams api` is `gh api`-shaped and keeps its own rules:** a documented HTTP method plus a Graph path, `-f k=v` for
+  string fields with dotted keys nesting (`body.content=…`), `-F k=v` keeping JSON types, `--input file|-` for the whole
+  body (which cannot be combined with the field flags), repeatable `--query` and `--header`, and `--dry-run`. The response
+  is printed as it arrived (`output.Printer.JSONBytes`, so `--jq` applies) and a non-JSON body is written verbatim. It
+  pre-checks no scopes — the caller defined the request — and read-only mode decides by method: a raw `GET`/`HEAD` stays
+  available, anything else is refused.
+- **Two fakes had to change to keep the contract layer honest.** A 204 No Content response is now skipped by the hook's
+  *response* validation (the description declares the status but no body, and the validator injects
+  `Content-Type: application/json`, so an empty body parses as EOF) — the same skip the package's own contract test
+  always had; and `POST /chats` accepts `Chat.ReadWrite` as well as `Chat.Create`, because the docs list it as the
+  higher-privileged alternative.
+- **The seed gained a fourth user** (`Carol Chen`), because `chat add-member` needs someone who is not already in every
+  seeded chat.
+- **Open for later phases:** `mise run smoke-live` still points at `internal/testing/live`, which does not exist
+  yet — the write scenario PLAN.md describes (post → read → react → edit → delete → search, plus a bot-profile run
+  through Key Vault) is what should land there; a large upload's chunking is covered by a unit test but has never run
+  against a live drive;
+  a chat upload relies on the `Microsoft Teams Chat Files` folder existing (Teams creates it — the CLI does not);
+  `edit` cannot add or remove attachments, which the delegated PATCH documents and the CLI therefore refuses;
+  `--subject` on a chat is sent because the spike stored it, but no live tenant has been asked to render it; and the
+  accepted reaction set is Graph's, so the CLI passes any string through.
 
 ### Phase 5: Bot/headless
 file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.

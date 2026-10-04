@@ -68,6 +68,16 @@ func (h *ContractHook) validate(method, path string, query url.Values, reqBody [
 	if err := h.validator.ValidateRequest(method, path, query, reqBody); err != nil && !isContractExempt(err) {
 		h.reporter.Errorf("fakegraph: contract: request %s %s: %v", method, path, err)
 	}
+	// 204 No Content is the documented answer to PATCH, softDelete and the two
+	// reaction actions (refs/graph/api-reference/v1.0/api/chatmessage-update.md:44-45,
+	// chatmessage-softdelete.md:51, chatmessage-setreaction.md). The description
+	// declares the status but no body, and the validator injects
+	// Content-Type: application/json, so an intentionally empty body fails with
+	// EOF: there is nothing to check. The package's own contract test skips the
+	// same statuses (internal/testing/fakegraph/contract_test.go).
+	if status == http.StatusNoContent || status == http.StatusResetContent {
+		return
+	}
 	if err := h.validator.ValidateResponse(method, path, status, respBody); err != nil && !isContractExempt(err) {
 		h.reporter.Errorf("fakegraph: contract: response %s %s (%d): %v", method, path, status, err)
 	}
@@ -114,7 +124,24 @@ func (s *Server) validateContract(method, rel string, query url.Values, body []b
 	if status >= 300 && status < 400 {
 		return
 	}
+	// The colon-addressed upload routes create a file that does not exist yet,
+	// e.g. PUT /drives/{drive-id}/items/{parent-id}:/{filename}:/content
+	// (refs/graph/api-reference/v1.0/api/driveitem-put-content.md:48). The
+	// api-reference documents them, but Microsoft's OpenAPI description does not
+	// model colon addressing at all — it has no path containing ":/" under
+	// /drives — so there is no spec shape to validate against. They are
+	// fake-only routes for that reason (routes.go), and the fake's own behaviour
+	// is asserted by the file flow tests instead.
+	if isDriveItemAddressing(rel) {
+		return
+	}
 	s.opts.Contract.validate(method, rel, query, body, status, resp)
+}
+
+// isDriveItemAddressing reports whether rel is one of the colon-addressed drive
+// item routes (see validateContract).
+func isDriveItemAddressing(rel string) bool {
+	return strings.HasPrefix(rel, "/drives/") && strings.Contains(rel, ":/")
 }
 
 // isChannelHostedContentValue reports whether rel is the channel form of the

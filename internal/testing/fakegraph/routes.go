@@ -72,7 +72,10 @@ func buildRoutes() []routeDef {
 		{method: "GET", pattern: "/me/people", scopes: []string{"People.Read"}, fn: handlePeople},
 
 		// Chats.
-		{method: "POST", pattern: "/chats", scopes: []string{"Chat.Create"}, fn: handleCreateChat},
+		// A chat create takes Chat.Create with Chat.ReadWrite as the documented
+		// higher-privileged alternative
+		// (refs/graph/api-reference/v1.0/includes/permissions/chat-post-permissions.md:9).
+		{method: "POST", pattern: "/chats", scopes: []string{"Chat.Create", "Chat.ReadWrite"}, fn: handleCreateChat},
 		{method: "DELETE", pattern: "/chats/{chat-id}", scopes: []string{"Chat.ManageDeletion.All"}, fn: handleDeleteChat},
 		// The chat-level soft delete is documented through /users/{id}/chats —
 		// the /chats form answers 405 in the live service
@@ -84,12 +87,28 @@ func buildRoutes() []routeDef {
 		{method: "POST", pattern: "/users/{user-id}/chats/{chat-id}/softDelete", scopes: []string{"Chat.ReadWrite"}, fn: handleSoftDeleteChat},
 
 		// Files.
+		{method: "GET", pattern: "/me/drive", scopes: filesReadScopes, fn: handleDefaultDrive},
 		{method: "GET", pattern: "/teams/{team-id}/channels/{channel-id}/filesFolder", scopes: []string{"Files.Read.All", "ChannelSettings.Read.All", "Sites.Read.All"}, fn: handleFilesFolder},
 		{method: "GET", pattern: "/drives/{drive-id}/items/{driveItem-id}", scopes: filesReadScopes, fn: handleGetDriveItem},
 		{method: "GET", pattern: "/drives/{drive-id}/items/{driveItem-id}/children", scopes: filesReadScopes, fn: handleDriveItemChildren},
 		{method: "GET", pattern: "/drives/{drive-id}/items/{driveItem-id}/content", scopes: filesReadScopes, fn: handleGetDriveItemContent},
-		{method: "PUT", pattern: "/drives/{drive-id}/items/{driveItem-id}/content", scopes: []string{"Files.ReadWrite.All", "Files.ReadWrite", "Sites.ReadWrite.All"}, fn: handlePutDriveItemContent},
-		{method: "POST", pattern: "/drives/{drive-id}/items/{driveItem-id}/createUploadSession", scopes: []string{"Files.ReadWrite.All", "Files.ReadWrite"}, fn: handleCreateUploadSession},
+		{method: "PUT", pattern: "/drives/{drive-id}/items/{driveItem-id}/content", scopes: filesWriteScopes, fn: handlePutDriveItemContent},
+		{method: "POST", pattern: "/drives/{drive-id}/items/{driveItem-id}/createUploadSession", scopes: filesWriteScopes, fn: handleCreateUploadSession},
+		{method: "POST", pattern: "/drives/{drive-id}/items/{driveItem-id}/createLink", scopes: filesWriteScopes, fn: handleCreateLink},
+		// The colon-addressed forms create a file that does not exist yet:
+		// /drives/{drive-id}/items/{parent}:/{filename}:/content and
+		// .../createUploadSession (refs/graph/api-reference/v1.0/api/driveitem-put-content.md:48,
+		// driveitem-createuploadsession.md:43). A second route carries an
+		// intermediate folder, which is the chat path's
+		// "Microsoft Teams Chat Files/{name}"
+		// (refs/teams-mcp/src/utils/file-upload.ts:262). They are fake-only
+		// routes: Microsoft's OpenAPI description does not model colon
+		// addressing at all (see contract.go's exemption), so they cannot be
+		// part of the committed route list.
+		{method: "PUT", pattern: "/drives/{drive-id}/items/{parent-ref}:/{file-name}:/content", scopes: filesWriteScopes, fn: handlePutNewDriveItemContent},
+		{method: "PUT", pattern: "/drives/{drive-id}/items/{parent-ref}:/{folder-name}/{file-name}:/content", scopes: filesWriteScopes, fn: handlePutNewDriveItemContent},
+		{method: "POST", pattern: "/drives/{drive-id}/items/{parent-ref}:/{file-name}:/createUploadSession", scopes: filesWriteScopes, fn: handleCreateUploadSessionForPath},
+		{method: "POST", pattern: "/drives/{drive-id}/items/{parent-ref}:/{folder-name}/{file-name}:/createUploadSession", scopes: filesWriteScopes, fn: handleCreateUploadSessionForPath},
 		// The pre-authenticated download URL and the upload session URL are
 		// served by a different host in the live service and are not part of
 		// the api-reference, so they are not in the contract route list. They
@@ -115,6 +134,12 @@ var (
 	channelSendScopes  = []string{"ChannelMessage.Send"}
 	channelWriteScopes = []string{"ChannelMessage.ReadWrite", "Group.ReadWrite.All"}
 	filesReadScopes    = []string{"Files.Read.All", "Files.Read", "Sites.Read.All"}
+	// filesWriteScopes is the upload set: Files.ReadWrite.All is the documented
+	// least-privileged scope for a channel drive, Files.ReadWrite for the
+	// caller's own OneDrive (a chat attachment), and Sites.ReadWrite.All is the
+	// higher-privileged alternative the docs list for both
+	// (refs/graph/api-reference/v1.0/includes/permissions/driveitem-put-content-permissions.md:9).
+	filesWriteScopes = []string{"Files.ReadWrite.All", "Files.ReadWrite", "Sites.ReadWrite.All"}
 )
 
 // chatRoutes returns every chat route under one prefix. The read scope differs

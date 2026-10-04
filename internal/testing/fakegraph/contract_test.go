@@ -94,9 +94,12 @@ var contractCalls = map[string]contractCall{
 		"messageIds":   []string{"gm-hc"},
 		"replyMessage": map[string]any{"body": map[string]string{"contentType": "html", "content": "<p>quoted</p>"}},
 	}},
-	"POST /chats/{chat-id}/messages/{chatMessage-id}/softDelete":    {path: "/chats/chat-1on1/messages/gm-hc/softDelete"},
-	"POST /chats/{chat-id}/messages/{chatMessage-id}/setReaction":   {path: "/chats/chat-1on1/messages/gm-hc/setReaction", body: map[string]string{"reactionType": "like"}},
-	"POST /chats/{chat-id}/messages/{chatMessage-id}/unsetReaction": {path: "/chats/chat-1on1/messages/gm-hc/unsetReaction", body: map[string]string{"reactionType": "like"}},
+	"POST /chats/{chat-id}/messages/{chatMessage-id}/softDelete": {path: "/chats/chat-1on1/messages/gm-hc/softDelete"},
+	// The documented (user-relative) chat soft-delete form is the one the CLI
+	// calls, because the /chats form answers 405 live (docs/spike/phase1.md:99).
+	"POST /users/{user-id}/chats/{chat-id}/messages/{chatMessage-id}/softDelete": {path: "/users/u-me/chats/chat-1on1/messages/gm-hc/softDelete"},
+	"POST /chats/{chat-id}/messages/{chatMessage-id}/setReaction":                {path: "/chats/chat-1on1/messages/gm-hc/setReaction", body: map[string]string{"reactionType": "like"}},
+	"POST /chats/{chat-id}/messages/{chatMessage-id}/unsetReaction":              {path: "/chats/chat-1on1/messages/gm-hc/unsetReaction", body: map[string]string{"reactionType": "like"}},
 
 	// Search.
 	"POST /search/query": {path: "/search/query", body: map[string]any{
@@ -110,12 +113,16 @@ var contractCalls = map[string]contractCall{
 
 	// Files.
 	"GET /teams/{team-id}/channels/{channel-id}/filesFolder": {path: "/teams/t-eng/channels/c-general/filesFolder"},
-	"GET /drives/{drive-id}/items/{driveItem-id}":            {path: "/drives/drive-t-eng/items/folder-c-general"},
-	"GET /drives/{drive-id}/items/{driveItem-id}/children":   {path: "/drives/drive-t-eng/items/folder-c-general/children"},
-	"GET /drives/{drive-id}/items/{driveItem-id}/content":    {path: "/drives/drive-t-eng/items/file-1/content"},
-	"PUT /drives/{drive-id}/items/{driveItem-id}/content":    {path: "/drives/drive-t-eng/items/file-1/content", body: json.RawMessage("uploaded through the contract test")},
+	"GET /me/drive": {path: "/me/drive"},
+	"GET /drives/{drive-id}/items/{driveItem-id}":          {path: "/drives/drive-t-eng/items/folder-c-general"},
+	"GET /drives/{drive-id}/items/{driveItem-id}/children": {path: "/drives/drive-t-eng/items/folder-c-general/children"},
+	"GET /drives/{drive-id}/items/{driveItem-id}/content":  {path: "/drives/drive-t-eng/items/file-1/content"},
+	"PUT /drives/{drive-id}/items/{driveItem-id}/content":  {path: "/drives/drive-t-eng/items/file-1/content", body: json.RawMessage("uploaded through the contract test")},
 	"POST /drives/{drive-id}/items/{driveItem-id}/createUploadSession": {path: "/drives/drive-t-eng/items/folder-c-general/createUploadSession", body: map[string]any{
 		"item": map[string]any{"name": "upload.bin"},
+	}},
+	"POST /drives/{drive-id}/items/{driveItem-id}/createLink": {path: "/drives/drive-t-eng/items/file-1/createLink", body: map[string]string{
+		"type": "view", "scope": "organization",
 	}},
 }
 

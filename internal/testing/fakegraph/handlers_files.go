@@ -35,6 +35,178 @@ type uploadSession struct {
 
 var uploadSessionMu sync.Mutex
 
+// handleDefaultDrive serves GET /me/drive, the drive a chat file attachment
+// goes into (refs/graph/api-reference/v1.0/api/drive-get.md:38).
+func handleDefaultDrive(c *handlerCtx) {
+	st := c.s.st
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	// ensureRootLocked creates the drive on demand, so a test that wants to
+	// upload into the user's OneDrive needs no seed for it.
+	st.ensureRootLocked(st.myDrive)
+	c.json(http.StatusOK, map[string]any{
+		"id":        st.myDrive,
+		"driveType": "personal",
+		"name":      "OneDrive",
+		"webUrl":    c.s.url + "/me/drive",
+	})
+}
+
+// handlePutNewDriveItemContent serves the colon-addressed simple upload,
+// PUT /drives/{drive-id}/items/{parent-ref}:/{filename}:/content — or, with a
+// folder in the path, .../{parent-ref}:/{folder}/{filename}:/content. It is how
+// a file that does not exist yet is created, and what both the channel and the
+// chat upload use
+// (refs/graph/api-reference/v1.0/api/driveitem-put-content.md:48; the channel
+// path from refs/teams-mcp/src/utils/file-upload.ts:125, the chat path from
+// :265).
+//
+// The answer is 201 Created with the item, which is what the docs show for a
+// new file (:95-105); replacing an existing name answers 200 with the same
+// shape, because the documented default conflict behavior of a PUT is replace
+// (refs/graph/api-reference/v1.0/resources/driveitem.md:147).
+func handlePutNewDriveItemContent(c *handlerCtx) {
+	st := c.s.st
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	parent, name, err := c.driveAddress()
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	driveID := c.param("drive-id")
+	created := c.s.now()
+	item := st.findChildByNameLocked(driveID, parent.id, name)
+	status := http.StatusOK
+	if item == nil {
+		item = st.addDriveItemLocked(driveID, &driveItemRec{
+			id:       st.newIDLocked(),
+			name:     name,
+			parentID: parent.id,
+			created:  created,
+		})
+		status = http.StatusCreated
+	}
+	if ct := c.r.Header.Get("Content-Type"); ct != "" {
+		item.contentType = ct
+	}
+	item.content = append([]byte(nil), c.body...)
+	item.modified = created
+	c.json(status, st.renderDriveItem(driveID, item, c.s.url))
+}
+
+// handleCreateUploadSessionForPath serves the colon-addressed upload session,
+// POST /drives/{drive-id}/items/{parent-ref}:/{filename}:/createUploadSession,
+// which is how a large file is uploaded before it exists
+// (refs/graph/api-reference/v1.0/api/driveitem-createuploadsession.md:43).
+func handleCreateUploadSessionForPath(c *handlerCtx) {
+	var in struct {
+		Item struct {
+			Name             string `json:"name"`
+			ConflictBehavior string `json:"@microsoft.graph.conflictBehavior"`
+		} `json:"item"`
+	}
+	if len(c.body) > 0 && !c.decodeBody(&in) {
+		return
+	}
+	st := c.s.st
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	parent, name, err := c.driveAddress()
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	session := &uploadSession{
+		id:       "upload-" + st.newIDLocked(),
+		driveID:  c.param("drive-id"),
+		parentID: parent.id,
+		itemID:   st.newIDLocked(),
+		name:     name,
+	}
+	st.beginUploadLocked(session)
+	c.json(http.StatusOK, map[string]any{
+		"@odata.type":        "#microsoft.graph.uploadSession",
+		"uploadUrl":          c.s.url + "/_upload/" + session.id,
+		"expirationDateTime": graphTime(c.s.now().Add(uploadSessionTTL)),
+		"nextExpectedRanges": []string{"0-"},
+	})
+}
+
+// handleCreateLink serves POST /drives/{drive-id}/items/{driveItem-id}/createLink
+// and answers the documented sharing link
+// (refs/graph/api-reference/v1.0/api/driveitem-createlink.md:37,162-165).
+//
+// "organization" is the scope the CLI asks for first and "users" is its
+// fallback (refs/teams-mcp/src/utils/file-upload.ts:274-303); the fake serves
+// both, and refuses the scopes the docs do not list.
+func handleCreateLink(c *handlerCtx) {
+	var in struct {
+		Type  string `json:"type"`
+		Scope string `json:"scope"`
+	}
+	if !c.decodeBody(&in) {
+		return
+	}
+	switch in.Type {
+	case "view", "edit", "embed":
+	default:
+		c.fail(badRequestf("'type' must be view, edit or embed."))
+		return
+	}
+	switch in.Scope {
+	case "", "anonymous", "organization", "users":
+	default:
+		c.fail(badRequestf("'scope' must be anonymous, organization or users."))
+		return
+	}
+	st := c.s.st
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	if item, ok := st.driveItem(c.param("drive-id"), c.param("driveItem-id")); !ok {
+		c.fail(notFoundf("The drive item %q was not found.", c.param("driveItem-id")))
+		return
+	} else if item.folder {
+		c.fail(badRequestf("The drive item %q is a folder and cannot be shared as a file.", item.id))
+		return
+	}
+	link := c.s.url + "/_download/" + c.param("drive-id") + "/" + c.param("driveItem-id")
+	c.json(http.StatusOK, map[string]any{
+		"link": map[string]any{
+			"type":   in.Type,
+			"scope":  firstNonEmpty(in.Scope, "organization"),
+			"webUrl": link,
+		},
+	})
+}
+
+// driveAddress resolves the parent folder and the file name of a
+// colon-addressed upload route.
+//
+// A path segment named {folder-name} is an intermediate folder that the fake
+// creates on demand. That is a convenience, not a documented rule: Teams itself
+// creates "Microsoft Teams Chat Files" in the user's drive when the first chat
+// file is sent, and the CLI relies on that (refs/teams-mcp/src/utils/file-upload.ts:262).
+func (c *handlerCtx) driveAddress() (*driveItemRec, string, *apiError) {
+	st := c.s.st
+	driveID := c.param("drive-id")
+	parent, ok := st.driveItem(driveID, c.param("parent-ref"))
+	if !ok {
+		return nil, "", notFoundf("The drive item %q was not found.", c.param("parent-ref"))
+	}
+	if !parent.folder {
+		return nil, "", badRequestf("The drive item %q is not a folder.", parent.id)
+	}
+	name := c.param("file-name")
+	if name == "" {
+		return nil, "", badRequestf("The upload path does not name a file.")
+	}
+	if folderName := c.param("folder-name"); folderName != "" {
+		parent = st.childFolderLocked(driveID, parent.id, folderName, c.s.now())
+	}
+	return parent, name, nil
+}
+
 // handleFilesFolder serves GET /teams/{id}/channels/{id}/filesFolder. The
 // channel's drive folder is derived by the seed unless it was overridden
 // (internal/testing/fakegraph/model.go, Channel.DriveID/FilesFolderID).
@@ -241,9 +413,55 @@ func handleUploadChunk(c *handlerCtx) {
 	if total > 0 && session.received >= total {
 		session.done = true
 	}
-	c.json(http.StatusOK, map[string]any{
+	// The documented answer differs by chunk: 202 Accepted with the next
+	// expected range while ranges are missing, and 200 (or 201) with the
+	// finished driveItem on the last one
+	// (refs/graph/api-reference/v1.0/api/driveitem-createuploadsession.md:216,250).
+	if session.done {
+		c.json(http.StatusOK, st.renderDriveItem(session.driveID, item, c.s.url))
+		return
+	}
+	c.json(http.StatusAccepted, map[string]any{
 		"expirationDateTime": graphTime(c.s.now().Add(uploadSessionTTL)),
 		"nextExpectedRanges": []string{strconv.Itoa(session.nextStart) + "-"},
+	})
+}
+
+// findChildByNameLocked returns a child of parent with that name, if it exists.
+// Names are compared case-insensitively, the way OneDrive treats them.
+func (s *store) findChildByNameLocked(driveID, parentID, name string) *driveItemRec {
+	d := s.drives[driveID]
+	if d == nil {
+		return nil
+	}
+	for _, id := range d.order {
+		item := d.items[id]
+		if item.parentID == parentID && !item.folder && strings.EqualFold(item.name, name) {
+			return item
+		}
+	}
+	return nil
+}
+
+// childFolderLocked finds or creates a folder child of parent, which is how a
+// colon-addressed path with a folder in it resolves (see driveAddress).
+func (s *store) childFolderLocked(driveID, parentID, name string, created time.Time) *driveItemRec {
+	d := s.drives[driveID]
+	if d != nil {
+		for _, id := range d.order {
+			item := d.items[id]
+			if item.parentID == parentID && item.folder && strings.EqualFold(item.name, name) {
+				return item
+			}
+		}
+	}
+	return s.addDriveItemLocked(driveID, &driveItemRec{
+		id:       "folder-" + s.newIDLocked(),
+		name:     name,
+		parentID: parentID,
+		folder:   true,
+		created:  created,
+		modified: created,
 	})
 }
 
