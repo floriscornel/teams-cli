@@ -124,8 +124,9 @@ A maintainer pushes a signed tag; the workflow installs mise and runs
 1. builds darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`,
    `-trimpath` and a commit timestamp, so the same commit rebuilds
    byte-identically;
-2. writes tar.gz archives (zip on Windows) with the binary, `LICENSE`/`README`/
-   `CHANGELOG` when they exist, and the generated man pages under `man/`;
+2. writes tar.gz archives (zip on Windows) with the binary, `LICENSE`, `README.md`,
+   the generated man pages under `man/`, and the generated shell completion
+   scripts under `completions/`;
 3. writes `checksums.txt`;
 4. writes one SBOM per archive with syft;
 5. signs `dist/checksums.txt` with cosign keyless into
@@ -155,8 +156,39 @@ review, and PLAN.md defers them past v1.0. Consequences worth knowing:
 - users install with `go install github.com/floriscornel/teams-cli/cmd/teams@…`
   or by unpacking an archive (the release body says so, see `release.header` in
   `.goreleaser.yaml`);
-- during v0.x, tags with a prerelease indicator (`v0.2.0-rc.1`) become GitHub
-  pre-releases through `release.prerelease: auto`.
+- tags with a prerelease indicator (`v1.1.0-rc.1`) become GitHub pre-releases
+  through `release.prerelease: auto`;
+
+#### Cutting the v1.0.0 tag
+
+Everything the tag needs is committed, and the pipeline can be rehearsed locally
+without publishing:
+
+```bash
+mise run release-check                  # `goreleaser check`
+mise run snapshot                       # the whole build matrix
+./scripts/smoke.sh dist/teams_darwin_arm64_v8.0/teams
+git tag -s v1.0.0 -m 'teams v1.0.0'     # a signed tag: release.yml only runs on v*
+git push origin v1.0.0
+```
+
+`release.yml` then builds, signs, attests and publishes. Afterwards, check the
+result the way a user would: `gh release view v1.0.0`, download one archive and
+run `gh attestation verify` on it, and let `pages.yml` publish the docs site from
+`main`. Rollback is "mark the release pre-release and ship a patch tag"; never
+re-tag (PLAN.md "Release process").
+
+### `pages.yml` — push to `main`, manual
+
+Renders `README.md` and the generated `docs/commands` into a static site with
+`mise run docs-site` (no static-site generator: `internal/testing/docsite` is a
+Go program that uses the same markdown parser the CLI uses for Teams bodies) and
+deploys `dist/docs-site` with `actions/deploy-pages`. The command pages are
+generated, so the site cannot contradict the binary: `ci.yml`'s `docs` job fails
+when `docs/commands` is stale, and this job publishes exactly those files.
+Permissions are `contents: read`, `pages: write`, `id-token: write`, and the
+concurrency group allows one deployment at a time without cancelling a running
+one.
 
 ### `nightly.yml` — cron `17 4 * * *`
 

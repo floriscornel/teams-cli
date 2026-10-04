@@ -356,8 +356,8 @@ Every workflow defaults to `permissions: contents: read`, pins third-party actio
   - a user-facing README (install, sign in, the command surface, scripting, troubleshooting);
   - generated `docs/commands/*.md`, man pages and shell completion scripts from cobra (`mise run docs`);
   - a documentation site rendered from those two by `internal/testing/docsite` and published to GitHub Pages by `pages.yml`;
-  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault (Phase 7);
-  - an "App registration" guide (Phase 5, the remaining polish).
+  - an "App registration" guide (`docs/guides/app-registration.md`, rendered on the site);
+  - a "Service account bot" guide with a GitHub Actions example using OIDC → Key Vault (Phase 7).
 
 ## Implementation phases
 
@@ -652,8 +652,14 @@ and the REPL. Ship the first four before the UX layer so the history format is d
   bytes in `docs/completion/` means an archive install is complete without running the CLI, and `docs-check` fails if the
   generated scripts drift from the command tree.
 - **Licence:** MIT, added with this phase so the first release has one.
-- **Open for the tag:** the `v1.0.0` tag itself is a maintainer action (`git tag -s` and the release workflow), and the
-  "App registration" guide is still to write. Everything else PLAN.md listed for this phase is in.
+- **The app-registration guide** (`docs/guides/app-registration.md`) is the one user-facing document the README could
+  not absorb: redirect URI, public client flows, the exact permission set per preset, admin consent, owners, and the
+  codes people hit (`AADSTS50011`, `AADSTS65001`, `AADSTS50020`). The site renders `docs/guides/*.md` beside the
+  command reference, so it is one page rather than a wall of README.
+- **Open for the tag:** only the `v1.0.0` tag itself, which is a maintainer action (`git tag -s`, then the release
+  workflow). The pipeline was rehearsed locally: `goreleaser check`, the full archive build (`release --snapshot`) and
+  `scripts/smoke.sh` against a release binary all pass, and the archive carries the binary, `LICENSE`, `README.md`,
+  `man/` and `completions/`.
 
 ### Phase 7: Bot/headless (was Phase 5; swapped 2026-10-04)
 file and Key Vault token stores, `auth export/refresh`, non-interactive mode and exit codes, CI guide.

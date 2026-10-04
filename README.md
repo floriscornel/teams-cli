@@ -65,11 +65,11 @@ teams doctor                     # check the config, token store, scopes and Gra
 ```
 
 Sign-in works with the Microsoft Graph CLI Tools app by default. Companies often
-block it, so the recommended setup is your own Entra app registration: put its
-ID in the config as `client_id`, add `http://localhost` as a *Mobile and desktop*
-redirect URI, enable public client flows (for device code), and have an admin
-consent to the scopes in `teams doctor`. `teams auth status --admin-request`
-prints the exact text to paste into a ticket.
+block it, so the recommended setup is your own Entra app registration — see
+[Register your own Entra app](docs/guides/app-registration.md) for the five-minute
+walkthrough (redirect URI, public client flows, the permission set per preset and
+the admin consent). `teams auth status --admin-request` prints the exact text to
+paste into a ticket.
 
 The token cache is encrypted and stays local; see
 [Where your data lives](#where-your-data-lives).

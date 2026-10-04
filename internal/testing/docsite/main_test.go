@@ -11,6 +11,39 @@ import (
 // the two things that decide whether a page is usable: its title (the sidebar
 // entry) and where its links point.
 
+func TestGuidePagesRender(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	guide := filepath.Join(root, "docs", "guides", "app-registration.md")
+	if _, err := os.Stat(guide); err != nil {
+		t.Skipf("no guide to render: %v", err)
+	}
+	site, err := buildSite(root)
+	if err != nil {
+		t.Fatalf("buildSite: %v", err)
+	}
+	var found *page
+	for i := range site {
+		if site[i].File == "guide-app-registration.html" {
+			found = &site[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("the guide did not become a page")
+	}
+	if found.Title != "Register your own Entra app (recommended)" {
+		t.Errorf("title = %q", found.Title)
+	}
+	body := string(found.Body)
+	if !strings.Contains(body, "<h2>") || !strings.Contains(body, "AADSTS50011") {
+		t.Errorf("the guide body looks unrendered: %.200q", body)
+	}
+	// The README links to it as a site page, not as a file in the repository.
+	index := string(site[0].Body)
+	if !strings.Contains(index, `href="guide-app-registration.html"`) {
+		t.Errorf("the README does not link the guide page")
+	}
+}
+
 func TestFirstHeading(t *testing.T) {
 	tests := map[string]string{
 		"## teams post\n\nPost a message.\n": "teams post",
@@ -119,8 +152,15 @@ func TestBuildSiteRendersEveryPage(t *testing.T) {
 		if !strings.Contains(string(p.Body), "<") {
 			t.Errorf("page %s has no rendered HTML", p.File)
 		}
-		if p.File != "index.html" && p.Section != "Commands" {
-			t.Errorf("page %s is in section %q", p.File, p.Section)
+		switch {
+		case p.File == "index.html", strings.HasPrefix(p.File, "guide-"):
+			if p.Section != "Guide" {
+				t.Errorf("page %s is in section %q, want Guide", p.File, p.Section)
+			}
+		default:
+			if p.Section != "Commands" {
+				t.Errorf("page %s is in section %q, want Commands", p.File, p.Section)
+			}
 		}
 	}
 }

@@ -86,6 +86,12 @@ func buildSite(root string) ([]page, error) {
 		Section: "Guide",
 	}}
 
+	guides, err := buildGuides(root)
+	if err != nil {
+		return nil, err
+	}
+	site = append(site, guides...)
+
 	commandsDir := filepath.Join(root, "docs", "commands")
 	entries, err := os.ReadDir(commandsDir)
 	if err != nil {
@@ -116,6 +122,48 @@ func buildSite(root string) ([]page, error) {
 		})
 	}
 	return site, nil
+}
+
+// buildGuides renders docs/guides/*.md as Guide pages, in file-name order so the
+// sidebar is stable.
+func buildGuides(root string) ([]page, error) {
+	guidesDir := filepath.Join(root, "docs", "guides")
+	entries, err := os.ReadDir(guidesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Guides are optional: a repository without them renders the README
+			// and the command reference.
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", guidesDir, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	out := make([]page, 0, len(names))
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(guidesDir, name))
+		if err != nil {
+			return nil, err
+		}
+		title := firstHeading(string(data))
+		body, err := render(docLinkRewriter(string(data), root))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page{
+			File:    "guide-" + strings.TrimSuffix(name, ".md") + ".html",
+			Title:   title,
+			Usage:   title,
+			Body:    body,
+			Section: "Guide",
+		})
+	}
+	return out, nil
 }
 
 // render converts markdown to HTML. Raw HTML in the source is escaped rather
@@ -187,6 +235,11 @@ func sitePageFor(root, target string) (string, bool) {
 			return strings.TrimSuffix(name, ".md") + ".html", true
 		}
 	}
+	if name, ok := strings.CutPrefix(cleaned, "docs/guides/"); ok && strings.HasSuffix(name, ".md") {
+		if _, err := os.Stat(filepath.Join(root, "docs", "guides", name)); err == nil {
+			return "guide-" + strings.TrimSuffix(name, ".md") + ".html", true
+		}
+	}
 	return "", false
 }
 
@@ -234,9 +287,10 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <body>
 <nav>
   <p class="brand"><a href="index.html">teams</a></p>
-  {{ range .Pages }}{{ if eq .Section "Guide" }}<p class="section">Guide</p><ul>
-    <li><a href="{{ .File }}">Overview</a></li>
-  </ul>{{ end }}{{ end }}
+  <p class="section">Guide</p><ul>
+    <li><a href="index.html">Overview</a></li>
+  {{ range .Pages }}{{ if eq .Section "Guide" }}<li><a href="{{ .File }}">{{ .Title }}</a></li>{{ end }}{{ end }}
+  </ul>
   <p class="section">Command reference</p>
   <ul>
   {{ range .Pages }}{{ if eq .Section "Commands" }}<li><a href="{{ .File }}">{{ .Usage }}</a></li>{{ end }}{{ end }}
