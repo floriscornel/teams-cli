@@ -187,7 +187,7 @@ gh release view vX.Y.Z                     # the assets are back
 gh attestation verify <downloaded archive> --repo floriscornel/teams-cli
 ```
 
-#### Cutting the v1.0.0 tag
+#### Cutting a release tag
 
 Everything the tag needs is committed, and the pipeline can be rehearsed locally
 without publishing:
@@ -196,12 +196,12 @@ without publishing:
 mise run release-check                  # `goreleaser check`
 mise run snapshot                       # the whole build matrix
 ./scripts/smoke.sh dist/teams_darwin_arm64_v8.0/teams
-git tag -s v1.0.0 -m 'teams v1.0.0'     # a signed tag: release.yml only runs on v*
-git push origin v1.0.0
+git tag -s vX.Y.Z -m 'teams vX.Y.Z'     # a signed tag: release.yml only runs on v*
+git push origin vX.Y.Z
 ```
 
 `release.yml` then builds, signs, attests and publishes. Afterwards, check the
-result the way a user would: `gh release view v1.0.0`, download one archive and
+result the way a user would: `gh release view vX.Y.Z`, download one archive and
 run `gh attestation verify` on it, and let `pages.yml` publish the docs site from
 `main`. Rollback is "mark the release pre-release and ship a patch tag"; never
 re-tag (PLAN.md "Release process").

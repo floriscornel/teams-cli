@@ -1,9 +1,11 @@
 # teams
 
-`teams` is a command-line client for Microsoft Teams. It reads everything you can
-see in Teams — your teams and channels, threads, chats, search results, mentions,
-unread messages, people, files — and it writes: post, reply, edit, delete, react,
-attach files, create chats, change members and move your read state.
+`teams` is a command-line client for Microsoft Teams and Outlook calendar. It
+reads everything you can see in Teams — your teams and channels, threads, chats,
+search results, mentions, unread messages, people, files — and it writes: post,
+reply, edit, delete, react, attach files, create chats, change members and move
+your read state. It also reads your calendar, or a colleague's, and creates,
+moves, answers, cancels and deletes meetings.
 
 It is one static binary with no runtime to install. Reading and writing both work
 from a script, a cron job or an AI agent, and the same binary can sign in as a
@@ -27,7 +29,27 @@ posted 1750000000003
 
 ## Install
 
-**Download a release** (macOS, Linux and Windows; `amd64` and `arm64`):
+**With mise**, the recommended way ([mise-en-place](https://mise.jdx.dev)):
+
+```bash
+mise use -g github:floriscornel/teams-cli
+```
+
+mise takes the archive for your platform out of the release, checks it against the
+digest GitHub reports, **verifies the build-provenance attestation**, unpacks it and
+puts `teams` on your PATH — no archive and no checksum step to do by hand. `-g`
+records the tool for every shell; without it, the tool lands in the current
+project's `mise.toml` instead.
+
+Name a version to pin one, which is also how to install a release published in the
+last day: mise withholds those from `@latest` on purpose (`minimum_release_age`,
+24 h by default):
+
+```bash
+mise use -g github:floriscornel/teams-cli@1.1.0
+```
+
+**Or download a release** (macOS, Linux and Windows; `amd64` and `arm64`):
 
 ```bash
 gh release download --repo floriscornel/teams-cli --pattern 'teams_*_darwin_arm64.tar.gz'
@@ -41,13 +63,15 @@ install teams ~/.local/bin/teams
 go install github.com/floriscornel/teams-cli/cmd/teams@latest
 ```
 
-The archives also carry the man pages (`man teams`) and shell completions for
-bash, zsh, fish and PowerShell (`completions/`). Without an archive,
+Every archive carries the man pages (`man teams`) and shell completions for bash,
+zsh, fish and PowerShell (`completions/`); a mise install keeps all of it in the
+directory `mise where github:floriscornel/teams-cli` prints. Without an archive,
 `teams completion bash` prints the same script, and `teams version --check` says
 whether a newer release exists.
 
 Every release ships `checksums.txt`, signed with cosign keyless and covered by a
-GitHub build-provenance attestation:
+GitHub build-provenance attestation — mise verifies it for you, and a hand
+download can be checked the same way:
 
 ```bash
 gh attestation verify --owner floriscornel teams_*_darwin_arm64.tar.gz \
@@ -239,6 +263,7 @@ teams chat list --unread --json | jq -r '.[].topic'
 teams search deploy --json --jq '.hits[0].webUrl'
 teams channel read Engineering/General --json --jq '.[0].body.content'
 teams unread --json --jq '{chats: (.chats | length), mentions: (.mentions | length)}'
+teams calendar list --date tomorrow --json --jq '.[] | "\(.start) \(.subject)"'
 ```
 
 Exit codes are the same everywhere, so a script can tell failures apart:
@@ -429,22 +454,25 @@ else is refused.
 
 ## Status
 
-**`v1.0.0` has shipped**, and this branch adds the calendar reads (`teams calendar
-list`, `show`, `search`) on top of it; the calendar writes (`create`, `update`,
-`accept`, `tentative`, `decline`, `cancel`, `delete`) land next. The binary is what
-this README describes, and this documentation is also published at
-**<https://floriscornel.github.io/teams-cli/>** (generated from the repository).
+**`v1.1.0` is the current release.** It adds the calendar, read and write:
+`teams calendar list`, `show` and `search`, and `create`, `update`, `accept`,
+`tentative`, `decline`, `cancel` and `delete`. `v1.0.x` covers everything else
+here. The binary is what this README describes, and this documentation is also
+published at **<https://floriscornel.github.io/teams-cli/>** (generated from the
+repository).
 
 In order from here:
 
-1. **Calendar writes** — `create`, `update`, the four responses, `cancel` and
-   `delete`, behind `Calendars.ReadWrite`. They notify attendees, so they ask for
-   confirmation and support `--dry-run`.
-2. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
+1. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
    OpenAI-compatible or Azure/Foundry provider, conversation history and curated
    memory. Opt-in, off by default.
-3. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
+2. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
    and a CI guide, for unattended runners.
+
+Not in either release yet, and asked for often enough to say so: `forward` a
+meeting, delta sync, rooms and resources as first-class targets, and editing a
+whole recurring series (every calendar action applies to the single instance you
+list).
 
 [PLAN.md](PLAN.md) is the full design and the reasoning behind each decision.
 
