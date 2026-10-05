@@ -335,7 +335,25 @@ func (a *App) runCalendarList(ctx context.Context, flags calendarListFlags) erro
 		return a.Printer.JSON(calendarJSONRows(rows, window.loc))
 	}
 	a.printCalendarTable(rows, window, flags.chat, len(targets) > 1)
+	a.reportEmptyDay(len(rows) == 0, window)
 	return nil
+}
+
+// reportEmptyDay says so when a listing produced no rows.
+//
+// A header row on its own is ambiguous: it reads the same whether the day is
+// empty or the command printed nothing at all. The note goes to stderr so stdout
+// stays exactly the table (and --json stays exactly the array).
+func (a *App) reportEmptyDay(empty bool, window rangeWindow) {
+	if !empty {
+		return
+	}
+	if window.coversOneDay() {
+		a.Printer.Statusf("no events")
+		return
+	}
+	a.Printer.Statusf("no events between %s and %s",
+		window.from.Format("2006-01-02"), window.to.Format("2006-01-02"))
 }
 
 // calendarTarget is one calendar the command reads: the signed-in user or a
@@ -1435,5 +1453,9 @@ func (a *App) runCalendarSearch(ctx context.Context, query string, flags listFla
 		})
 	}
 	a.Printer.Table(headers, table)
+	if len(rows) == 0 {
+		// The same note as a listing: an empty result reads as a failure otherwise.
+		a.Printer.Statusf("no events matched %q", query)
+	}
 	return nil
 }

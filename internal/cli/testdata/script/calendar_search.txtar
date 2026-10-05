@@ -36,9 +36,14 @@ stdout '^me$'
 exec teams calendar search standup --json --jq '[.[].id] | join(",")'
 stdout '^AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAE=,AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAA=$'
 
-# A query that matches nothing is an empty table, not an error.
+# A query that matches nothing is an empty table plus a note on stderr, not an
+# error. --json stays exactly the empty array.
 exec teams calendar search nothing-matches-this
+stderr 'no events matched "nothing-matches-this"'
 ! stdout 'Standup'
+exec teams calendar search nothing-matches-this --json --jq 'length'
+stdout '^0$'
+! stderr 'no events'
 
 # --limit caps the output, and --all pages every result. The seed has one match
 # for "a", so the page size is exercised by "company" plus the paging loop.

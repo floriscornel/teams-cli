@@ -121,6 +121,16 @@ stderr 'is before'
 ! exec teams calendar list --days 0
 stderr '--days must be at least 1'
 
-# A day nobody has an event on is an empty table, not an error.
+# A day nobody has an event on is an empty table plus a note, not an error. The
+# note goes to stderr, so stdout is still exactly the table and --json is still
+# exactly the array.
 exec teams calendar list --date 2030-01-01
+stderr 'no events'
 ! stdout 'Standup'
+exec teams calendar list --date 2030-01-01 --json --jq 'length'
+stdout '^0$'
+! stderr 'no events'
+
+# A range with no events names both ends.
+exec teams calendar list --from 2030-01-01 --to 2030-01-05
+stderr 'no events between 2030-01-01 and 2030-01-05'
