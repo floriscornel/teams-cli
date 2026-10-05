@@ -17,6 +17,11 @@ package cli_test
 import (
 	"encoding/base64"
 	"encoding/json"
+
+	// The scripts pin TZ, and the child process has to resolve that name: the
+	// zone database travels with the built binary (cmd/teams/main.go) but not with
+	// a test binary, so Windows would otherwise fall back to UTC and every
+	// rendered time in a calendar script would be wrong.
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +29,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	_ "time/tzdata"
 	"unicode/utf8"
 
 	"github.com/rogpeppe/go-internal/testscript"

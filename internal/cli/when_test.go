@@ -368,3 +368,43 @@ func isKnownZone(name string) bool {
 	_, err := time.LoadLocation(name)
 	return err == nil
 }
+
+func TestLocalLocationHonoursTZ(t *testing.T) {
+	// The display location has to follow $TZ, not time.Local: Go reads TZ for
+	// time.Local on unix only, so a Windows run told TZ=Asia/Tokyo would render
+	// every time in the runner's own zone while the request bodies kept naming
+	// Asia/Tokyo (which is what the Windows CI run of the calendar scripts
+	// showed).
+	t.Setenv("TZ", "Asia/Tokyo")
+	loc := localLocation()
+	if loc.String() != "Asia/Tokyo" {
+		t.Fatalf("localLocation() = %s, want Asia/Tokyo", loc)
+	}
+	loc2, zone, err := displayLocation("")
+	if err != nil {
+		t.Fatalf("displayLocation: %v", err)
+	}
+	if loc2.String() != "Asia/Tokyo" || zone != "Asia/Tokyo" {
+		t.Errorf("displayLocation(\"\") = (%s, %q), want Asia/Tokyo for both", loc2, zone)
+	}
+	// The two must agree: a request that names one zone and renders another is
+	// the bug this guards.
+	if loc2.String() != zoneName("") {
+		t.Errorf("the display location is %s but the request would name %q", loc2, zoneName(""))
+	}
+
+	// An unusable TZ falls back instead of failing.
+	t.Setenv("TZ", "not a zone")
+	if got := localLocation(); got == nil {
+		t.Error("localLocation() = nil for an unusable TZ")
+	}
+	// --tz still wins over the environment.
+	t.Setenv("TZ", "Asia/Tokyo")
+	loc3, zone3, err := displayLocation("Europe/Amsterdam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc3.String() != "Europe/Amsterdam" || zone3 != "Europe/Amsterdam" {
+		t.Errorf("--tz was ignored: (%s, %q)", loc3, zone3)
+	}
+}

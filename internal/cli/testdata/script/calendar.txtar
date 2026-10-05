@@ -37,6 +37,11 @@ exec teams calendar list --json --jq '.[0].start'
 stdout 'T00:00:00\+09:00$'
 exec teams calendar list --json --jq '.[1].start'
 stdout 'T09:00:00\+09:00$'
+# The rendered offset is the point of the pinned TZ: a machine whose own zone is
+# UTC (a Windows runner has no zoneinfo and ignores TZ in time.Local) used to
+# render every time in UTC while the request still named Asia/Tokyo.
+exec teams calendar list --json --jq '.[1].end'
+stdout 'T09:30:00\+09:00$'
 # The handle is the first 7 hex characters of the SHA-256 of the event id, so it
 # is the same on every run and can be written down here.
 exec teams calendar list --json --jq '.[1].handle'

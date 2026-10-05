@@ -279,15 +279,37 @@ func weekdayNumber(name string) (time.Weekday, bool) {
 // displayLocation resolves the location every day and time in a calendar command
 // is rendered in: --tz when given, otherwise this machine's own zone.
 func displayLocation(tz string) (*time.Location, string, error) {
-	name := strings.TrimSpace(tz)
-	if name != "" {
+	if name := strings.TrimSpace(tz); name != "" {
 		loc, err := time.LoadLocation(name)
 		if err != nil {
 			return nil, "", output.Usagef("--tz %q is not a known IANA time zone (for example Europe/Amsterdam or Asia/Tokyo)", tz)
 		}
 		return loc, name, nil
 	}
-	return time.Local, zoneName(tz), nil
+	return localLocation(), zoneName(tz), nil
+}
+
+// localLocation is this machine's zone when nothing was asked for.
+//
+// $TZ is consulted first, and that is not the same thing as time.Local: Go reads
+// TZ for time.Local on unix only, so a Windows run that was told TZ=Asia/Tokyo
+// would render every time in the runner's own zone while the request bodies kept
+// naming Asia/Tokyo. Reading the variable here is what keeps the rendered times
+// and the requested zone in step on all three platforms, and it is what the
+// tests' `env TZ=...` relies on.
+func localLocation() *time.Location {
+	if name := strings.TrimSpace(os.Getenv("TZ")); name != "" {
+		if loc, err := time.LoadLocation(name); err == nil {
+			return loc
+		}
+	}
+	if runtime.GOOS == "windows" {
+		// There is no /etc/localtime and no TZ support in time.Local here, and the
+		// runner's zone is unknown, so UTC is the only honest answer: it is also
+		// what zoneName falls back to.
+		return time.UTC
+	}
+	return time.Local
 }
 
 // zoneName returns the IANA name a request body needs.
