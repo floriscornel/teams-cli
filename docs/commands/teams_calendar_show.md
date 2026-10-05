@@ -35,5 +35,5 @@ teams calendar show <event> [flags]
 
 ### SEE ALSO
 
-* [teams calendar](teams_calendar.md)	 - List, show and search your calendar
+* [teams calendar](teams_calendar.md)	 - List, show and search your calendar, and act on meetings
 

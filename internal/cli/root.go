@@ -431,6 +431,10 @@ func isWriteCommand(cmd *cobra.Command, args []string) bool {
 			return true
 		case "login", "logout", "mark-read", "mark-unread", "add-member", "create":
 			return true
+		// Phase 6b: the calendar verbs that change something. `list`, `show` and
+		// `search` are deliberately absent, so --read-only still allows them.
+		case "accept", "tentative", "decline", "cancel", "update":
+			return true
 		case "api":
 			return apiWrites(args)
 		}

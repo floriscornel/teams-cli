@@ -1,27 +1,27 @@
-## teams calendar search
+## teams calendar accept
 
-Search your calendar
+Accept a meeting invitation
 
 ### Synopsis
 
-Search events in your PRIMARY calendar only — no shared or delegated
-calendar is searched, and no other calendar can be asked for. Results are
-not sorted by the service and come 25 per page; --limit/--all decide how
-many are shown.
+Accept a meeting you were invited to. The organizer is notified unless
+--no-notify is passed.
 
-Results are printed with the same columns and the same --json schema as
-`teams calendar list`.
+You cannot respond to a meeting you organize: Graph refuses it, so the CLI
+does too, before sending anything.
 
 ```
-teams calendar search <query> [flags]
+teams calendar accept <event> [flags]
 ```
 
 ### Options
 
 ```
-      --all         page through every result
-  -h, --help        help for search
-      --limit int   maximum number of results (default 25)
+      --comment string   message to send with the response
+      --dry-run          print the Graph request without sending it
+  -h, --help             help for accept
+      --no-notify        do not tell the organizer about the response
+      --notify           tell the organizer about the response (default true)
 ```
 
 ### Options inherited from parent commands

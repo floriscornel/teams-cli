@@ -678,6 +678,45 @@ Graph fakes have to reproduce the verified behaviour — a 1825-day `calendarVie
 lookup. `plans/calendar.md` is the full spec; `refs/INDEX.md` §1 "Calendar" maps each endpoint to its
 mirrored page.
 
+#### What Phase 6 shipped, and the decisions it forced
+- **Landed:** `teams calendar list|show|search` (6a) and `create|update|accept|tentative|decline|cancel|delete`
+  (6b), the `internal/cli/when.go` day/range/zone grammar, the event handle table in the entity cache, the
+  five calendar scopes as incremental requests, and the fake/fixture work that reproduces the live behaviour.
+- **The calendar scopes are incremental, and no preset gained one.** `Calendars.Read`, `Calendars.Read.Shared`,
+  `Calendars.ReadWrite`, `Calendars.ReadWrite.Shared` and `OnlineMeetings.Read` are requested by
+  `(*App).requireIncrementalScopes` at first use, which is the generalisation of the `chat delete` helper: it
+  takes the any-of set a command can work with and the set a re-consent asks for, so `calendar list --chat`
+  can require `OnlineMeetings.Read` without also asking for it on every calendar command. Nothing here can
+  trigger the `AADSTS65001` failure that adding a scope to a preset causes.
+- **The two doc sources disagree about the calendarView path, and the live service wins.** The api-reference
+  documents `/me/calendar/calendarView` and `/users/{id}/calendar/calendarView`; the OpenAPI description
+  declares only the `/users/...` family; the handoff verified the shorter `/me/calendarView` and
+  `/users/{id}/calendarView` spellings live. The signed-in user's read therefore uses `/me/calendarView`
+  (verified live, but in neither machine-readable source, so it is a fake-only route with a recorded reason)
+  and a colleague's uses the documented `/users/{id}/calendar/calendarView`, which the Layer 6 contract
+  test validates. `/me/calendar/getSchedule` and `/me/onlineMeetings` are documented but not declared by
+  the description, so they are fake-only too. `refs/INDEX.md` and `internal/testing/contract/routes.go`
+  carry the detail.
+- **An address is not resolved through the directory.** `--user alice@example.com` and
+  `--attendee alice@example.com` are passed straight to Graph, which accepts a UPN or an address, so a
+  calendar-only profile needs no `User.ReadBasic.All` or `People.Read`. A display name still resolves
+  through the directory, and that is the one case where the extra scopes are needed.
+- **All-day events are floating, so the window is widened and the rows are filtered exactly.**
+  `calendarView` is asked for one day on each side of the requested range and the result is filtered
+  against the requested local days, an all-day event by its own dates and a timed one by instants. The
+  widening is dropped rather than the range when a request sits exactly at the server cap (62 days for
+  free/busy, 1825 for a calendar view).
+- **`--propose` and `--no-notify` cannot be combined**, because `proposedNewTime` with
+  `sendResponse: false` is a 400 `ErrorInvalidParameter`; the CLI refuses it before the round trip.
+- **The four responses answer 204 in the fake and 202 in the live service.** The description declares 204,
+  and the contract test is what keeps the fake honest, so the fake follows the description; the CLI only
+  requires a 2xx.
+- **`--dry-run`'s request body is `requestBody`, not `body`.** Several Graph bodies carry a property
+  called `body` (an event's body, a message's body), and a reader of the dry-run JSON could not tell the
+  envelope from the payload.
+- **Open for a later phase:** `forward`, delta sync, rooms and resources, editing a recurring series, and
+  the `/onlineMeetings` API beyond the single chat lookup.
+
 **Why this moved ahead of the AI features.** Calendar is the user-facing feature users ask for next, and
 its whole cost is one incrementally requested scope plus a thin read layer over endpoints the mirror
 already documents. AI needs a provider, a key and a consent flow before it can do anything, so it stays

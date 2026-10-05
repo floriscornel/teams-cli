@@ -1,36 +1,40 @@
-## teams calendar list
+## teams calendar create
 
-List meetings for a day or a range
+Create an event, optionally with attendees and a Teams meeting
 
 ### Synopsis
 
-List your meetings, or a colleague's, for one day or a date range.
+Create an event. Days and times are LOCAL (--tz, or this machine's zone).
 
-Days are local (--tz, or this machine's zone). Another user's calendar is
-shown in full when it is shared with you; otherwise the command falls back to
-free/busy, which shows only times and status (--free-busy asks for that
-directly). The ID column is a short handle for the full event id, usable with
-`teams calendar show`.
+Attendees are invited immediately: on a terminal the command asks first, and
+anywhere else it needs --yes. --teams asks for a Teams meeting, which the
+mailbox has to allow.
 
 ```
-teams calendar list [--user <who>]… [--date <day>] [--days N] [--from <day> --to <day>] [flags]
+teams calendar create --subject <s> (--start <time> [--end <time> | --duration <d>] | --all-day --date <day> [--days N]) [flags]
 ```
 
 ### Options
 
 ```
-      --all                 show every row instead of --limit
-      --chat                resolve each Teams meeting's chat and add a Chat column
+      --all-day             create a floating all-day event instead of a timed one
+      --attendee strings    invite this person (repeatable, comma-separated)
+      --body string         the event body text
       --date string         the day to show: today, tomorrow, yesterday, YYYY-MM-DD, +Nd, -Nd or a weekday name (default "today")
       --days int            how many days to show from --date (default 1)
-      --free-busy           show free/busy only, even for your own shared calendars
+      --dry-run             print the Graph request without sending it
+      --duration string     length when --end is not given (default 30m)
+      --end string          end time
       --from string         first day of a range (inclusive); must be paired with --to
-  -h, --help                help for list
+  -h, --help                help for create
       --include-cancelled   also show events that were cancelled
-      --limit int           maximum number of rows (default 200)
+      --location string     the location
+      --start string        start time (YYYY-MM-DD HH:MM, HH:MM, or RFC3339)
+      --subject string      the event subject
+      --teams               make it a Teams online meeting
       --to string           last day of a range (inclusive); must be paired with --from
       --tz string           IANA time zone for the days and times (default: this machine's)
-      --user strings        a colleague whose calendar to include (repeatable, comma-separated; default: you)
+      --yes                 skip the confirmation prompt when there are attendees
 ```
 
 ### Options inherited from parent commands

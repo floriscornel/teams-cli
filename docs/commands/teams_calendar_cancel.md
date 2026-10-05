@@ -1,27 +1,25 @@
-## teams calendar search
+## teams calendar cancel
 
-Search your calendar
+Cancel a meeting you organize
 
 ### Synopsis
 
-Search events in your PRIMARY calendar only — no shared or delegated
-calendar is searched, and no other calendar can be asked for. Results are
-not sorted by the service and come 25 per page; --limit/--all decide how
-many are shown.
+Cancel a meeting. Only the organizer can cancel; use `teams calendar
+decline` to turn down an invitation instead.
 
-Results are printed with the same columns and the same --json schema as
-`teams calendar list`.
+Your attendees are told the meeting is cancelled.
 
 ```
-teams calendar search <query> [flags]
+teams calendar cancel <event> [flags]
 ```
 
 ### Options
 
 ```
-      --all         page through every result
-  -h, --help        help for search
-      --limit int   maximum number of results (default 25)
+      --comment string   message to send to the attendees
+      --dry-run          print the Graph request without sending it
+  -h, --help             help for cancel
+      --yes              skip the confirmation prompt
 ```
 
 ### Options inherited from parent commands

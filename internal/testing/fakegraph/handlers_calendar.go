@@ -100,6 +100,26 @@ type eventRec struct {
 	eventType   string
 	seriesID    string
 	webLink     string
+	// attendees are the invitees, in the order they were created with. They
+	// decide whether delete/cancel warn about sending cancellations.
+	attendees []attendeeRecord
+	// transactionID deduplicates a retried create: re-posting the same body and
+	// transactionId returns this event instead of creating a second one
+	// (plans/calendar.md §3, F10).
+	transactionID string
+	// seq orders events created through the API behind the seeded ones, so a
+	// listing stays deterministic.
+	seq int
+	// generated marks an event created through the API, which `delete` removes.
+	generated bool
+}
+
+// attendeeRecord is one invitee of a stored event.
+type attendeeRecord struct {
+	name     string
+	address  string
+	kind     string
+	response string
 }
 
 // addEventLocked records one seeded event. Callers hold the write lock (or are

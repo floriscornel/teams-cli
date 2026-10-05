@@ -146,6 +146,18 @@ func buildRoutes() []routeDef {
 		{method: "GET", pattern: "/me/events/{event-id}", scopes: calendarReadScopes, fn: handleGetEvent},
 		{method: "GET", pattern: "/me/onlineMeetings", scopes: []string{"OnlineMeetings.Read", "OnlineMeetings.ReadWrite"}, fn: handleOnlineMeetings},
 		{method: "GET", pattern: "/me/calendar", scopes: calendarReadScopes, fn: handleCalendar},
+		// The writes need Calendars.ReadWrite, which the api-reference lists as the
+		// only permission for all of them
+		// (refs/graph/api-reference/v1.0/includes/permissions/event-accept-permissions.md:9).
+		// Create is documented as POST /me/calendar/events, not POST /me/events
+		// (refs/graph/api-reference/v1.0/api/calendar-post-events.md:12).
+		{method: "POST", pattern: "/me/calendar/events", scopes: calendarWriteScopes, fn: handleCreateEvent},
+		{method: "PATCH", pattern: "/me/events/{event-id}", scopes: calendarWriteScopes, fn: handleUpdateEvent},
+		{method: "DELETE", pattern: "/me/events/{event-id}", scopes: calendarWriteScopes, fn: handleDeleteEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/accept", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/tentativelyAccept", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/decline", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/cancel", scopes: calendarWriteScopes, fn: handleCancelEvent},
 
 		// $batch. Sub-requests are checked against their own route's scope, so
 		// the batch itself requires none (refs/graph/concepts/json-batching.md).
@@ -179,6 +191,10 @@ var (
 	// calendarSharedReadScopes adds the shared-calendar scope that another
 	// user's calendarView needs (plans/calendar.md §3, F1).
 	calendarSharedReadScopes = []string{"Calendars.ReadBasic", "Calendars.Read", "Calendars.ReadWrite", "Calendars.Read.Shared", "Calendars.ReadWrite.Shared"}
+	// calendarWriteScopes is every write: Calendars.ReadWrite, with the shared
+	// variant, because the api-reference lists exactly one permission for each
+	// response and for cancel/delete (plans/calendar.md §3, F1).
+	calendarWriteScopes = []string{"Calendars.ReadWrite", "Calendars.ReadWrite.Shared"}
 )
 
 // chatRoutes returns every chat route under one prefix. The read scope differs

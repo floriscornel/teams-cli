@@ -31,6 +31,7 @@ PUT /drives/{drive-id}/items/{driveItem-id}/content refs/graph/api-reference/v1.
 POST /drives/{drive-id}/items/{driveItem-id}/createLink refs/graph/api-reference/v1.0/api/driveitem-createlink.md
 POST /drives/{drive-id}/items/{driveItem-id}/createUploadSession refs/graph/api-reference/v1.0/api/driveitem-createuploadsession.md
 GET /me refs/graph/api-reference/v1.0/api/user-get.md
+POST /me/calendar/events refs/graph/api-reference/v1.0/api/calendar-post-events.md
 GET /me/chats refs/graph/api-reference/v1.0/api/chat-list.md
 GET /me/chats/{chat-id} refs/graph/api-reference/v1.0/api/chat-get.md
 GET /me/drive refs/graph/api-reference/v1.0/api/drive-get.md

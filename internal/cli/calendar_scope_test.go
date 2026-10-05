@@ -450,3 +450,48 @@ func (h *harness) countGraphCalls(t *testing.T) func() int {
 		return calls
 	}
 }
+
+// ---- the --teams mailbox check ---------------------------------------------
+
+// TestCalendarCreateTeamsNeedsATeamsMailbox pins the F10 rule: a mailbox whose
+// allowedOnlineMeetingProviders lacks teamsForBusiness accepts the create and
+// silently drops the meeting, so the CLI checks first and fails with exit 1
+// instead of creating an event that is not online.
+//
+// This lives here rather than in a testscript because it needs a server whose
+// /me/calendar says something different from the scripts' default mailbox.
+func TestCalendarCreateTeamsNeedsATeamsMailbox(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1.0/me":
+			_, _ = io.WriteString(w, `{"id":"user-1","displayName":"Alice","mail":"alice@example.com"}`)
+		case "/v1.0/me/calendar":
+			_, _ = io.WriteString(w, `{"allowedOnlineMeetingProviders":["skypeForBusiness"]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":{"code":"ErrorItemNotFound","message":"not found"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	h := newHarness(t)
+	h.graphURL = srv.URL + "/v1.0"
+	h.applyHooks()
+	h.useAccessToken(t, "User.Read Calendars.ReadWrite")
+	h.app.Hooks.GrantedScopes = []string{"User.Read", "Calendars.Read", "Calendars.ReadWrite"}
+
+	err := h.run("calendar", "create", "--subject", "Online", "--start", "09:00", "--teams")
+	h.wantCode(err, output.CodeError)
+	if msg := err.Error(); !strings.Contains(msg, "cannot create Teams meetings") {
+		t.Errorf("error = %q, want it to name the mailbox limitation", msg)
+	}
+	// The create must never have been sent.
+	for _, path := range paths {
+		if strings.HasPrefix(path, "POST /v1.0/me/calendar/events") {
+			t.Errorf("the create was sent despite the mailbox check: %v", paths)
+		}
+	}
+}

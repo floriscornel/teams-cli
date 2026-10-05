@@ -2,35 +2,44 @@
 .TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
 
 .SH NAME
-teams-calendar-search - Search your calendar
+teams-calendar-decline - Decline a meeting invitation
 
 
 .SH SYNOPSIS
-\fBteams calendar search  [flags]\fP
+\fBteams calendar decline  [flags]\fP
 
 
 .SH DESCRIPTION
-Search events in your PRIMARY calendar only — no shared or delegated
-calendar is searched, and no other calendar can be asked for. Results are
-not sorted by the service and come 25 per page; --limit/--all decide how
-many are shown.
+Decline a meeting you were invited to, optionally proposing a different time
+with --propose.
 
 .PP
-Results are printed with the same columns and the same --json schema as
-\fBteams calendar list\fR\&.
+Declining moves the event to Deleted Items, so it leaves your calendar.
 
 
 .SH OPTIONS
-\fB--all\fP[=false]
-	page through every result
+\fB--comment\fP=""
+	message to send with the response
+
+.PP
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
 
 .PP
 \fB-h\fP, \fB--help\fP[=false]
-	help for search
+	help for decline
 
 .PP
-\fB--limit\fP=25
-	maximum number of results
+\fB--no-notify\fP[=false]
+	do not tell the organizer about the response
+
+.PP
+\fB--notify\fP[=true]
+	tell the organizer about the response
+
+.PP
+\fB--propose\fP=""
+	propose a new time as /
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS

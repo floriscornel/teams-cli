@@ -150,6 +150,41 @@ Anything that writes supports `--dry-run`, which prints the Graph request it
 would send instead of sending it — including the uploads a message with `--file`
 would perform.
 
+## Writing to your calendar
+
+```bash
+teams calendar create --subject Standup --start 09:00 --duration 15m --attendee bob@example.com
+teams calendar create --subject Offsite --all-day --date 2026-10-12 --days 2
+teams calendar create --subject "Design review" --start 14:00 --teams
+teams calendar accept a1b2c3d --comment "see you there"
+teams calendar tentative a1b2c3d --propose "2026-10-07 15:00/2026-10-07 15:30"
+teams calendar update a1b2c3d --subject "Moved review" --start 15:00 --duration 45m
+teams calendar cancel a1b2c3d --comment "rescheduling"
+teams calendar delete a1b2c3d --yes
+```
+
+**These commands notify people.** Creating with `--attendee` sends the
+invitations immediately, so on a terminal the command asks first and anywhere
+else it needs `--yes`. Accepting, tentatively accepting and declining tell the
+organizer; cancelling a meeting — or deleting one you organize — sends your
+attendees a cancellation. `--dry-run` prints the request instead of sending it
+(and still runs the read-only checks), and `--no-notify` answers without telling
+the organizer.
+
+The CLI refuses what Graph would reject, before sending anything:
+
+- responding to a meeting **you** organize (`you are the organizer…`);
+- cancelling one you do not organize (use `teams calendar decline`);
+- updating one you do not organize, unless `--local-copy` — otherwise you change
+  only your copy and the organizer's next update overwrites it;
+- `--propose` together with `--no-notify` (a proposed time has to reach the
+  organizer), or on an event whose organizer does not accept proposals;
+- `create --teams` on a mailbox that cannot make Teams meetings.
+
+`update` sends **only the fields you name**, so moving a meeting cannot drop its
+body or its Teams link. `--body` rewrites the body and can lose the Teams meeting
+details, which is why it is never sent unless you ask for it.
+
 ## Mentions, files and images
 
 `--mention` marks someone as a real Teams mention, so they get notified. The text

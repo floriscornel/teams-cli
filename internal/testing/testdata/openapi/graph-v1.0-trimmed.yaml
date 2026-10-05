@@ -1079,6 +1079,31 @@ paths:
         5XX:
           $ref: '#/components/responses/error'
       x-ms-docs-operation-type: operation
+  /me/calendar/events:
+    post:
+      tags:
+        - me.calendar
+      summary: Create new navigation property to events for me
+      operationId: me.calendar.CreateEvents
+      requestBody:
+        description: New navigation property
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/microsoft.graph.event'
+        required: true
+      responses:
+        2XX:
+          description: Created navigation property.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/microsoft.graph.event'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: operation
   /me/chats:
     get:
       tags:

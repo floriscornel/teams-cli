@@ -50,6 +50,18 @@ type whenFlags struct {
 	// still refusing an explicit combination (plans/calendar.md §4.2).
 	dateSet bool
 	daysSet bool
+	// cmd is the command the flags are bound to, when there is one. It is how
+	// flagSet reports an explicitly passed flag.
+	cmd *cobra.Command
+}
+
+// flagSet reports whether a flag was passed explicitly on the command line. With
+// no command (a struct built by a test) it falls back to the recorded bool.
+func (f whenFlags) flagSet(name string, recorded bool) bool {
+	if f.cmd != nil {
+		return f.cmd.Flags().Changed(name)
+	}
+	return recorded
 }
 
 // addTo binds the shared calendar window flags.
@@ -60,14 +72,12 @@ func (f *whenFlags) addTo(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.to, "to", "", "last day of a range (inclusive); must be paired with --from")
 	cmd.Flags().StringVar(&f.tz, "tz", "", "IANA time zone for the days and times (default: this machine's)")
 	cmd.Flags().BoolVar(&f.cancelled, "include-cancelled", false, "also show events that were cancelled")
-	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
-		// Remember which of the two mutually exclusive spellings was used, so a
-		// range can be refused when --date was passed explicitly rather than
-		// when it merely carries its default value.
-		f.dateSet = cmd.Flags().Changed("date")
-		f.daysSet = cmd.Flags().Changed("days")
-		return nil
-	}
+	// The command is kept so window() can tell an explicit --date/--days from a
+	// default value. That has to happen through cmd.Flags().Changed rather than in
+	// a PreRunE hook: cobra generates its own PreRunE to implement a boolean flag's
+	// --no- form (--no-notify on the response verbs), and overwriting it disables
+	// that flag.
+	f.cmd = cmd
 }
 
 // rangeWindow is the resolved request: the local days asked for and the widened
@@ -125,9 +135,9 @@ func (f whenFlags) window(now time.Time, shared bool) (rangeWindow, error) {
 			return w, output.Usagef("--to needs --from as well")
 		case f.to == "":
 			return w, output.Usagef("--from needs --to as well")
-		case f.dateSet:
+		case f.flagSet("date", f.dateSet):
 			return w, output.Usagef("--from/--to cannot be combined with --date")
-		case f.daysSet:
+		case f.flagSet("days", f.daysSet):
 			return w, output.Usagef("--from/--to cannot be combined with --days")
 		}
 		from, err := parseCalendarDay(f.from, now, loc)

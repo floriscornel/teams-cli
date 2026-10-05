@@ -607,7 +607,10 @@ type dryRunDocument struct {
 	DryRun bool   `json:"dryRun"`
 	Method string `json:"method"`
 	Path   string `json:"path"`
-	Body   any    `json:"body,omitempty"`
+	// Body is the request body. It is named requestBody rather than body because
+	// several Graph bodies carry a property called "body" (an event, a message),
+	// and a reader of the JSON could not tell the two apart.
+	Body any `json:"requestBody,omitempty"`
 	// Paths lists the extra requests a command makes when one is not enough
 	// (chat add-member adds one member per call).
 	Paths []string `json:"paths,omitempty"`

@@ -1,27 +1,28 @@
-## teams calendar search
+## teams calendar tentative
 
-Search your calendar
+Tentatively accept a meeting invitation
 
 ### Synopsis
 
-Search events in your PRIMARY calendar only — no shared or delegated
-calendar is searched, and no other calendar can be asked for. Results are
-not sorted by the service and come 25 per page; --limit/--all decide how
-many are shown.
+Tentatively accept a meeting you were invited to, optionally proposing a
+different time with --propose.
 
-Results are printed with the same columns and the same --json schema as
-`teams calendar list`.
+--propose needs --notify (it is a response to the organizer), and the
+organizer must allow new-time proposals.
 
 ```
-teams calendar search <query> [flags]
+teams calendar tentative <event> [flags]
 ```
 
 ### Options
 
 ```
-      --all         page through every result
-  -h, --help        help for search
-      --limit int   maximum number of results (default 25)
+      --comment string   message to send with the response
+      --dry-run          print the Graph request without sending it
+  -h, --help             help for tentative
+      --no-notify        do not tell the organizer about the response
+      --notify           tell the organizer about the response (default true)
+      --propose string   propose a new time as <start>/<end>
 ```
 
 ### Options inherited from parent commands

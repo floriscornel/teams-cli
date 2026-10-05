@@ -183,12 +183,18 @@ var routes = []Route{
 	//
 	// The event routes are cleaner: event-get/update/delete and the four
 	// responses all document the /me/events/{event-id} spelling, which the
-	// description also declares, so they are validated end to end. Create stays
-	// out for now: calendar-post-events.md documents POST /me/calendar/events
-	// (not the POST /me/events the handoff quotes), and Phase 6b adds it when
-	// the write path lands.
+	// description also declares, so they are validated end to end. Create is
+	// documented as POST /me/calendar/events — not the POST /me/events the handoff
+	// quotes — and the description declares that path too, so it is committed
+	// (refs/graph/api-reference/v1.0/api/calendar-post-events.md:12).
+	//
+	// The four responses answer 204 here while the live service answered 202
+	// (plans/calendar.md §3, F10): the description declares 204, and it is the
+	// contract test that keeps the fake honest, so the fake follows the
+	// description. The CLI only requires a 2xx.
 	{"GET", "/users/{user-id}/calendar/calendarView", "calendar-list-calendarview.md"},
 	{"GET", "/me/events/{event-id}", "event-get.md"},
+	{"POST", "/me/calendar/events", "calendar-post-events.md"},
 	{"PATCH", "/me/events/{event-id}", "event-update.md"},
 	{"DELETE", "/me/events/{event-id}", "event-delete.md"},
 	{"POST", "/me/events/{event-id}/accept", "event-accept.md"},

@@ -144,18 +144,28 @@ type calendarOrganizer struct {
 func (a *App) newCalendarCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "calendar",
-		Short: "List, show and search your calendar",
+		Short: "List, show and search your calendar, and act on meetings",
 		Long: "Read your calendar, or a colleague's, and act on meetings.\n\n" +
 			"Days and times are LOCAL: a day runs midnight to midnight in --tz, or in\n" +
 			"this machine's zone when --tz is not given. All-day events are floating, so\n" +
 			"they are matched by date and never shifted by a timezone conversion.\n\n" +
+			"The write commands notify people: an invitation reaches every --attendee as\n" +
+			"soon as the event is created, accepting or declining tells the organizer,\n" +
+			"and cancelling or deleting a meeting you organize sends your attendees a\n" +
+			"cancellation. They ask for confirmation first, and take --dry-run.\n\n" +
 			"Calendar scopes are requested at first use, so your profile may ask for them\n" +
 			"the first time one of these commands runs.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(a.newCalendarListCmd(), a.newCalendarShowCmd(), a.newCalendarSearchCmd())
+	cmd.AddCommand(
+		a.newCalendarListCmd(), a.newCalendarShowCmd(), a.newCalendarSearchCmd(),
+		// Phase 6b writes.
+		a.newCalendarCreateCmd(), a.newCalendarUpdateCmd(),
+		a.newCalendarAcceptCmd(), a.newCalendarTentativeCmd(), a.newCalendarDeclineCmd(),
+		a.newCalendarCancelCmd(), a.newCalendarDeleteCmd(),
+	)
 	return cmd
 }
 
@@ -1234,8 +1244,10 @@ func (a *App) newCalendarSearchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Search your calendar",
-		Long: "Search events in your PRIMARY calendar only: the search API does not reach\n" +
-			"shared calendars, does not sort results, and returns at most 25 per page.\n\n" +
+		Long: "Search events in your PRIMARY calendar only — no shared or delegated\n" +
+			"calendar is searched, and no other calendar can be asked for. Results are\n" +
+			"not sorted by the service and come 25 per page; --limit/--all decide how\n" +
+			"many are shown.\n\n" +
 			"Results are printed with the same columns and the same --json schema as\n" +
 			"`teams calendar list`.",
 		Args: cobra.MinimumNArgs(1),

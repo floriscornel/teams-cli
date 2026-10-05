@@ -121,6 +121,7 @@ func TestScripts(t *testing.T) {
 			e.Setenv("TEAMS_TEST_CALENDAR_NOCHAT_TOKEN", scriptsTokenWith(scriptsCalendarNoChatScopes))
 			e.Setenv("TEAMS_TEST_READ_TOKEN", scriptsTokenWith(scriptsToken))
 			e.Setenv("TEAMS_TEST_CALENDAR_ONLY_TOKEN", scriptsTokenWith(scriptsCalendarOnlyScopes))
+			e.Setenv("TEAMS_TEST_CALENDAR_WRITE_TOKEN", scriptsTokenWith(scriptsCalendarWriteScopes))
 			e.Setenv("TEAMS_TEST_CALENDAR_NOCHAT_TOKEN", scriptsTokenWith(scriptsCalendarNoChatScopes))
 			// Deterministic, unstyled output.
 			e.Setenv("NO_COLOR", "1")
@@ -362,6 +363,14 @@ func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
 			Start: at(0, 0).AddDate(0, 0, -1), Days: 1, ShowAs: "busy", IsOrganizer: true,
 		},
 		{
+			// An event the signed-in user was invited to, so the response
+			// pre-checks have something they are allowed to act on. It refuses
+			// proposed times, which `--propose` has to notice.
+			ID: "cal-invited", Subject: "Invited meeting", Start: at(15, 0), End: at(16, 0),
+			ShowAs: "tentative", OrganizerName: "Bob Builder", IsOrganizer: false,
+			AllowNewTimeProposals: boolPtr(false),
+		},
+		{
 			ID: "cal-bob-1", OwnerID: "user-2", Subject: "Bob review", Start: at(10, 0), End: at(11, 0),
 			OrganizerName: "Bob Builder", IsOrganizer: true,
 		},
@@ -379,9 +388,16 @@ func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
 // user first, to tell your own calendar from a colleague's.
 const scriptsCalendarScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
 
+// boolPtr is a small helper for the seed's optional booleans.
+func boolPtr(v bool) *bool { return &v }
+
 // scriptsCalendarNoChatScopes is the calendar read set WITHOUT OnlineMeetings.Read,
 // so a script can exercise `show`'s degraded chat note.
 const scriptsCalendarNoChatScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite"
+
+// scriptsCalendarWriteScopes is what the calendar write scripts need: the reads,
+// the write scope, and the chat scope a --teams create wants.
+const scriptsCalendarWriteScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
 
 // scriptsCalendarOnlyScopes is the calendar read set a fully consented profile
 // carries: the reads plus the chat scope.

@@ -1,0 +1,155 @@
+# calendar writes: create, update, the responses, cancel and delete — with the
+# pre-checks that refuse what Graph would answer 400 to, --dry-run, the
+# confirmation rules, and --read-only.
+#
+# TZ is pinned so the seeded Tokyo times are the ones the assertions name.
+#
+# Two seeded events carry the two roles every pre-check turns on:
+#
+#   1d69044  Daily standup    the signed-in user organizes it
+#   e8d45e9  Invited meeting  they were invited to it (and it refuses proposals)
+
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_CALENDAR_WRITE_TOKEN
+env TZ=Asia/Tokyo
+
+# A listing first, so the handles the write verbs take are cached: a handle is
+# only resolvable after a list/search/show has stored it (plans/calendar.md §4.6).
+exec teams calendar list --all --json --jq '[.[].handle] | join(",")'
+stdout 'e7b65ac,1d69044,6ab7341,e8d45e9'
+
+# --dry-run shows the request without sending it, including the transactionId
+# that makes a retried create safe (plans/calendar.md §4.7).
+exec teams calendar create --subject Dry-run --start 14:00 --duration 1h --dry-run
+stdout '"dryRun": true'
+stdout '"method": "POST"'
+stdout '"path": "/me/calendar/events"'
+stdout '"transactionId":'
+stdout '"requestBody"'
+stdout '"subject": "Dry-run"'
+# A timed create says nothing about all-day or online meetings.
+! stdout '"isAllDay"'
+! stdout '"isOnlineMeeting"'
+
+# The dry run of a verb still runs its read-only pre-check, so the request it
+# prints is one that would be accepted.
+exec teams calendar update 1d69044 --subject Renamed --dry-run
+stdout '"method": "PATCH"'
+stdout '"path": "/me/events/cal-standup"'
+stdout '"subject": "Renamed"'
+# Only the named field travels: an event body or a time would change more than
+# asked.
+! stdout '"body"'
+! stdout '"start"'
+
+exec teams calendar accept e8d45e9 --dry-run
+stdout '"path": "/me/events/cal-invited/accept"'
+stdout '"sendResponse": true'
+
+exec teams calendar decline e8d45e9 --comment cannot-make-it --dry-run
+stdout '"path": "/me/events/cal-invited/decline"'
+stdout 'cannot-make-it'
+
+exec teams calendar cancel 1d69044 --dry-run
+stdout '"path": "/me/events/cal-standup/cancel"'
+
+exec teams calendar delete 1d69044 --dry-run
+stdout '"method": "DELETE"'
+stdout '"path": "/me/events/cal-standup"'
+
+# Create for real: the handle it prints is usable straight away.
+exec teams calendar create --subject Real-meeting --start 09:00 --duration 45m
+stdout 'created [0-9a-f]{7}  09:00–09:45  Real-meeting'
+
+# An all-day create takes the day flags.
+exec teams calendar create --subject Offsite --all-day --date 2026-10-12 --days 2 --dry-run
+stdout '"isAllDay": true'
+stdout '"dateTime": "2026-10-12T00:00:00"'
+
+# A mailbox that CAN create Teams meetings gets a join URL back. The refusal case
+# needs a mailbox that cannot, which the script's server cannot serve as well, so
+# it is covered by TestCalendarCreateTeamsNeedsATeamsMailbox
+# (plans/calendar.md §3, F10).
+exec teams calendar create --subject Online --start 11:00 --teams
+stderr 'join: https://teams.microsoft.com/'
+
+# Attendees need a confirmation, which non-interactive mode refuses without --yes.
+! exec teams calendar create --subject With-guest --start 10:00 --attendee bob@example.com
+stderr 'send invitations to 1 person'
+stderr '--yes'
+exec teams calendar create --subject With-guest --start 10:00 --attendee bob@example.com --yes
+stdout 'created'
+
+# Accepting your own meeting is refused before anything is sent.
+! exec teams calendar accept 1d69044
+stderr 'you are the organizer of this meeting'
+
+# Accepting one you were invited to works.
+exec teams calendar accept e8d45e9
+stdout 'accepted'
+
+# Declining works too, and moves the event out of the calendar.
+exec teams calendar decline e8d45e9
+stdout 'declined'
+
+# Cancelling a meeting you do not organize is refused, with the fix.
+! exec teams calendar cancel 6ab7341
+stderr 'only the organizer can cancel'
+stderr 'teams calendar decline'
+
+# Cancelling your own works once confirmed.
+! exec teams calendar cancel 1d69044
+stderr 'needs confirmation'
+exec teams calendar cancel 1d69044 --yes
+stdout 'cancelled Standup'
+
+# Updating someone else's event would only change your copy.
+! exec teams calendar update 6ab7341 --subject Mine-now
+stderr 'only change your copy'
+stderr '--local-copy'
+exec teams calendar update 6ab7341 --subject Mine-now --local-copy
+stdout 'updated'
+
+# --propose is a response, so it cannot be combined with --no-notify, and
+# `accept` has no --propose flag at all.
+! exec teams calendar accept 6ab7341 --propose 2026-10-07T15:00/2026-10-07T16:00
+stderr 'unknown flag: --propose'
+! exec teams calendar tentative 6ab7341 --propose 2026-10-07T15:00/2026-10-07T16:00 --no-notify
+stderr 'cannot be combined with --no-notify'
+# The organizer of that event allows proposals, so this one is accepted.
+exec teams calendar tentative 6ab7341 --propose 2026-10-07T15:00/2026-10-07T16:00
+stdout 'tentatively accepted'
+
+# Delete needs --yes in non-interactive mode.
+! exec teams calendar delete 1d69044
+stderr 'needs confirmation'
+exec teams calendar delete 1d69044 --yes
+stdout 'deleted Standup'
+# The event is gone, so the handle no longer resolves to anything readable.
+! exec teams calendar show 1d69044
+stderr 'not found'
+
+# Update needs at least one field.
+! exec teams calendar update 6ab7341
+stderr 'nothing to update'
+
+# --read-only blocks every write verb and none of the reads.
+exec teams calendar list
+stdout 'Mine-now'
+exec teams calendar show 6ab7341
+stdout 'subject:.*Mine-now'
+exec teams calendar search holiday
+stdout 'Company holiday'
+! exec teams --read-only calendar create --subject Nope --start 09:00
+stderr 'read-only'
+! exec teams --read-only calendar update 6ab7341 --subject Nope
+stderr 'read-only'
+! exec teams --read-only calendar accept 6ab7341
+stderr 'read-only'
+! exec teams --read-only calendar tentative 6ab7341
+stderr 'read-only'
+! exec teams --read-only calendar decline 6ab7341
+stderr 'read-only'
+! exec teams --read-only calendar cancel 6ab7341 --yes
+stderr 'read-only'
+! exec teams --read-only calendar delete 6ab7341 --yes
+stderr 'read-only'

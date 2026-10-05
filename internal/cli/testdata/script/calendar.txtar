@@ -26,7 +26,7 @@ stdout '^me$'
 exec teams calendar list --json --jq '.[0].source'
 stdout '^events$'
 exec teams calendar list --json --jq '[.[].status] | sort | join(",")'
-stdout '^busy,oof,tentative$'
+stdout '^busy,oof,tentative,tentative$'
 exec teams calendar list --json --jq '.[0].handle | test("^[0-9a-f]{7}$")'
 stdout 'true'
 # All-day events come first within their day, and their JSON instants are the
@@ -70,7 +70,7 @@ stdout 'Planning'
 ! stdout 'Standup'
 
 exec teams calendar list --from today --to today --json --jq 'length'
-stdout '^3$'
+stdout '^4$'
 
 # A range longer than one day grows a Date column.
 exec teams calendar list --date today --days 2
@@ -100,7 +100,7 @@ stderr 'showing first 1; use --all'
 exec teams calendar list --limit 1 --json --jq 'length'
 stdout '^1$'
 exec teams calendar list --all --json --jq 'length'
-stdout '^3$'
+stdout '^4$'
 
 # Bad day and time-zone values are usage errors.
 ! exec teams calendar list --date someday

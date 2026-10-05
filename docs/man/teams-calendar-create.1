@@ -1,0 +1,132 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-calendar-create - Create an event, optionally with attendees and a Teams meeting
+
+
+.SH SYNOPSIS
+\fBteams calendar create --subject  (--start  [--end  | --duration ] | --all-day --date  [--days N]) [flags]\fP
+
+
+.SH DESCRIPTION
+Create an event. Days and times are LOCAL (--tz, or this machine's zone).
+
+.PP
+Attendees are invited immediately: on a terminal the command asks first, and
+anywhere else it needs --yes. --teams asks for a Teams meeting, which the
+mailbox has to allow.
+
+
+.SH OPTIONS
+\fB--all-day\fP[=false]
+	create a floating all-day event instead of a timed one
+
+.PP
+\fB--attendee\fP=[]
+	invite this person (repeatable, comma-separated)
+
+.PP
+\fB--body\fP=""
+	the event body text
+
+.PP
+\fB--date\fP="today"
+	the day to show: today, tomorrow, yesterday, YYYY-MM-DD, +Nd, -Nd or a weekday name
+
+.PP
+\fB--days\fP=1
+	how many days to show from --date
+
+.PP
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
+
+.PP
+\fB--duration\fP=""
+	length when --end is not given (default 30m)
+
+.PP
+\fB--end\fP=""
+	end time
+
+.PP
+\fB--from\fP=""
+	first day of a range (inclusive); must be paired with --to
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for create
+
+.PP
+\fB--include-cancelled\fP[=false]
+	also show events that were cancelled
+
+.PP
+\fB--location\fP=""
+	the location
+
+.PP
+\fB--start\fP=""
+	start time (YYYY-MM-DD HH:MM, HH:MM, or RFC3339)
+
+.PP
+\fB--subject\fP=""
+	the event subject
+
+.PP
+\fB--teams\fP[=false]
+	make it a Teams online meeting
+
+.PP
+\fB--to\fP=""
+	last day of a range (inclusive); must be paired with --from
+
+.PP
+\fB--tz\fP=""
+	IANA time zone for the days and times (default: this machine's)
+
+.PP
+\fB--yes\fP[=false]
+	skip the confirmation prompt when there are attendees
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-calendar(1)\fP
