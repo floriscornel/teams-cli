@@ -71,6 +71,10 @@ type App struct {
 	entityCache *store.EntityCache
 	aliases     map[string]string
 	me          *graph.Me
+	// injectedUser is the identity a test with Hooks.GrantedScopes gets, so a
+	// command that has to know who is signed in can still fail its scope check
+	// without a network round trip.
+	injectedUser graph.Me
 }
 
 // New builds an App around the given streams. The Printer is built here rather

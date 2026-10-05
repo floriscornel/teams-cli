@@ -206,13 +206,20 @@ func (a *App) newCalendarListCmd() *cobra.Command {
 
 // runCalendarList implements plans/calendar.md §4.3.
 func (a *App) runCalendarList(ctx context.Context, flags calendarListFlags) error {
-	// The scope checks come first, before any Graph call — including the /me read
-	// that resolving a person needs — because exit 3 means "fix your consent
-	// before this command does anything" (plans/calendar.md §4.8, §4.5). Whether
-	// the request needs the shared scope is decided from the flags alone: a
-	// --user that resolves to the signed-in user still costs one extra scope, and
-	// that is cheaper than a round trip on every plain `calendar list`.
-	others := len(flags.users) > 0
+	// Which scope this needs depends on whether the --user flags name anyone but
+	// you, so the signed-in user has to be known before the scope is checked. That
+	// read needs User.Read, which every profile that can list a calendar already
+	// has, and it is the only Graph call this command can make before its scope
+	// check (plans/calendar.md §4.8, §4.5).
+	//
+	// With Hooks.GrantedScopes the identity comes from the injected grant instead
+	// of a round trip, so a scope failure still reaches Graph zero times — which is
+	// what makes "exit 3 before any network call" testable.
+	me, err := a.signedInUser(ctx)
+	if err != nil {
+		return err
+	}
+	others := wantsAnotherCalendar(flags.users, me)
 	shared := flags.freeBusy || others
 	if err := a.requireCalendarReadScope(ctx, "teams calendar list", others, flags.freeBusy); err != nil {
 		return err
@@ -227,7 +234,7 @@ func (a *App) runCalendarList(ctx context.Context, flags calendarListFlags) erro
 	if err != nil {
 		return err
 	}
-	targets, err := a.calendarTargets(ctx, flags.users)
+	targets, err := a.calendarTargets(ctx, flags.users, me)
 	if err != nil {
 		return err
 	}
@@ -272,18 +279,24 @@ func (a *App) runCalendarList(ctx context.Context, flags calendarListFlags) erro
 			a.Printer.Warnf("%s: calendar not shared with you; showing free/busy", target.label)
 			forBusy = append(forBusy, target)
 		case notFound != nil:
-			a.Printer.Errorf("%s: %v", target.label, notFound)
+			// A warning, not an error: the other users are still listed. The exit
+			// code comes from the all-users-failed check below.
+			a.Printer.Warnf("%s: %s", target.label, errorWithHint(notFound))
 			failed++
 		default:
 			return ferr
 		}
 	}
 	if len(forBusy) > 0 {
-		busyRows, err := a.freeBusyRows(ctx, client, forBusy, window)
+		busyRows, busyFailed, err := a.freeBusyRows(ctx, client, forBusy, window)
 		if err != nil {
 			return err
 		}
 		rows = append(rows, busyRows...)
+		// A schedule that came back with a 5016 is a user whose calendar cannot be
+		// read at all, so it counts towards the exit code in the same way as an
+		// unreadable calendarView (plans/calendar.md §4.3, step 7).
+		failed += busyFailed
 	}
 
 	rows = filterCalendarRows(rows, window, flags.cancelled)
@@ -344,21 +357,26 @@ type calendarTarget struct {
 //
 // `me`, your own user principal name and your own mail address all mean the
 // signed-in user (plans/calendar.md §4.3).
-func (a *App) calendarTargets(ctx context.Context, users []string) ([]calendarTarget, error) {
-	me, err := a.Me(ctx)
-	if err != nil {
-		return nil, err
-	}
-	targets := []calendarTarget{{
+func (a *App) calendarTargets(ctx context.Context, users []string, me graph.Me) ([]calendarTarget, error) {
+	// `me` is the DEFAULT, not a prefix: with --user the list is exactly what was
+	// asked for. Prefixing it was the bug — `--user someone` printed a me row as
+	// well, and `--user nobody` "worked" because your own calendar was there to
+	// fill the listing (plans/calendar.md §4.3).
+	meTarget := calendarTarget{
 		label: "me", user: "me", id: me.ID, mail: firstNonEmptyString(me.Mail, me.UserPrincipalName), self: true,
-	}}
-	seen := map[string]bool{}
+	}
+	var (
+		targets []calendarTarget
+		seen    = map[string]bool{}
+		wantMe  = len(users) == 0
+	)
 	for _, raw := range users {
 		value := strings.TrimSpace(raw)
 		if value == "" {
 			return nil, output.Usagef("--user needs a person")
 		}
 		if isSelfReference(value, me) {
+			wantMe = true
 			continue
 		}
 		// An address or a UPN is taken as written. The calendarView and
@@ -398,7 +416,55 @@ func (a *App) calendarTargets(ctx context.Context, users []string) ([]calendarTa
 			mail:  firstNonEmptyString(person.UserMail, person.UserName),
 		})
 	}
-	return targets, nil
+	if !wantMe {
+		return targets, nil
+	}
+	// `me` leads when it is present, so a listing that mixes you with a colleague
+	// reads the way `calendar list` always has. Deduplicating here is what makes
+	// `--user me --user <your own mail>` one target.
+	seen["me"] = true
+	return append([]calendarTarget{meTarget}, targets...), nil
+}
+
+// signedInUser is Me for a real session and a static identity for a test that
+// injected its granted scopes. The injected form exists so a command whose scope
+// check depends on *who* you are can still fail before touching the network.
+func (a *App) signedInUser(ctx context.Context) (graph.Me, error) {
+	if a.Hooks.GrantedScopes != nil {
+		// An injected grant has no session to ask, and the command only needs to
+		// tell `--user me` from a colleague: an empty identity answers that for
+		// every value except the literal "me", which isSelfReference handles.
+		//
+		// It is kept in its own field rather than a.me, so the "unknown id" cache
+		// that a real resolution fills is never a fabricated record.
+		return a.injectedUser, nil
+	}
+	return a.Me(ctx)
+}
+
+// wantsAnotherCalendar reports whether the --user flags ask for a calendar that is
+// not the signed-in user's, which is what decides between the plain read scope and
+// the shared one (plans/calendar.md §4.8): `--user me` is still only your own.
+func wantsAnotherCalendar(users []string, me graph.Me) bool {
+	for _, raw := range users {
+		if value := strings.TrimSpace(raw); value != "" && !isSelfReference(value, me) {
+			return true
+		}
+	}
+	return false
+}
+
+// errorWithHint renders an error and its hint as one line, for a warning that
+// should not be followed by a separate `hint:` line the way a returned error is.
+func errorWithHint(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if hint := output.HintOf(err); hint != "" {
+		return msg + " (" + hint + ")"
+	}
+	return msg
 }
 
 // looksLikeAddress reports whether a --user value is already an SMTP address or
@@ -538,7 +604,10 @@ func calendarRowFromEvent(ev graph.Event, target calendarTarget, window rangeWin
 }
 
 // freeBusyRows asks getSchedule for the queued users and converts the schedules.
-func (a *App) freeBusyRows(ctx context.Context, client *graph.Client, targets []calendarTarget, window rangeWindow) ([]calendarRow, error) {
+// freeBusyRows asks getSchedule for the queued users and returns the rows plus the
+// number of schedules that could not be read at all, which the caller adds to its
+// own failure count (plans/calendar.md §4.3, step 4).
+func (a *App) freeBusyRows(ctx context.Context, client *graph.Client, targets []calendarTarget, window rangeWindow) ([]calendarRow, int, error) {
 	mails := make([]string, 0, len(targets))
 	byMail := map[string]calendarTarget{}
 	for _, target := range targets {
@@ -550,13 +619,14 @@ func (a *App) freeBusyRows(ctx context.Context, client *graph.Client, targets []
 		byMail[strings.ToLower(target.mail)] = target
 	}
 	if len(mails) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
 	schedules, err := client.GetSchedule(ctx, mails, window.start, window.end, window.zone, graph.DefaultScheduleInterval)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	rows := make([]calendarRow, 0, len(schedules))
+	failed := 0
 	for _, schedule := range schedules {
 		target, ok := byMail[strings.ToLower(schedule.ScheduleID)]
 		if !ok {
@@ -569,6 +639,7 @@ func (a *App) freeBusyRows(ctx context.Context, client *graph.Client, targets []
 			// mailbox" and "no such user", and the CLI cannot tell them apart
 			// (plans/calendar.md §3, F7).
 			a.Printer.Warnf("%s: no free/busy available (%s)", target.label, schedule.Error.ResponseCode)
+			failed++
 			continue
 		}
 		for _, item := range schedule.Items() {
@@ -605,7 +676,7 @@ func (a *App) freeBusyRows(ctx context.Context, client *graph.Client, targets []
 			})
 		}
 	}
-	return rows, nil
+	return rows, failed, nil
 }
 
 // filterCalendarRows keeps the rows inside the requested local days and drops
@@ -983,10 +1054,12 @@ func classifyCalendarViewError(err error) (fallback bool, notFound error) {
 	case apiErr.Status == 404 && apiErr.Code == "ErrorItemNotFound":
 		return true, nil
 	case apiErr.Status == 404 && apiErr.Code == "MailboxNotEnabledForRESTAPI":
-		return false, output.WithHint(output.NotFoundf("%v", apiErr),
-			"this user has no Exchange Online mailbox (or it is inactive or on-premises), so their calendar cannot be read")
+		// The message is what the user needs to know, not the request that failed:
+		// the URL and the request id are only useful under -v, which the caller
+		// already has (plans/calendar.md §4.5).
+		return false, output.NotFoundf("has no Exchange Online mailbox (it may be inactive or on-premises); their calendar cannot be read")
 	case apiErr.Status == 404 && apiErr.Code == "ErrorInvalidUser":
-		return false, output.NotFoundf("%v", apiErr)
+		return false, output.NotFoundf("no such user")
 	default:
 		return false, nil
 	}

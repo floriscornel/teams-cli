@@ -412,7 +412,7 @@ func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
 // `list --chat` and `show`.
 // User.Read is in the set because every calendar command resolves the signed-in
 // user first, to tell your own calendar from a colleague's.
-const scriptsCalendarScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
+const scriptsCalendarScopes = "User.Read User.ReadBasic.All People.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
 
 // boolPtr is a small helper for the seed's optional booleans.
 func boolPtr(v bool) *bool { return &v }
