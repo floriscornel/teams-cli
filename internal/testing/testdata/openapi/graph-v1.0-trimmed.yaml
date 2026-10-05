@@ -1222,6 +1222,278 @@ paths:
         5XX:
           $ref: '#/components/responses/error'
       x-ms-docs-operation-type: operation
+  /me/events/{event-id}:
+    get:
+      tags:
+        - me.event
+      summary: Get event
+      description: 'Get the properties and relationships of the specified event object. Currently, this operation returns event bodies in only HTML format. There are two scenarios where an app can get an event in another user''s calendar: Since the event resource supports extensions, you can also use the GET operation to get custom properties and extension data in an event instance.'
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-get?view=graph-rest-1.0
+      operationId: me.GetEvents
+      parameters:
+        - name: $select
+          in: query
+          description: Select properties to be returned
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $expand
+          in: query
+          description: Expand related entities
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+      responses:
+        2XX:
+          description: Retrieved navigation property
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/microsoft.graph.event'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: operation
+    patch:
+      tags:
+        - me.event
+      summary: Update event
+      description: Update the properties of the event object.
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-update?view=graph-rest-1.0
+      operationId: me.UpdateEvents
+      requestBody:
+        description: New navigation property values
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/microsoft.graph.event'
+        required: true
+      responses:
+        2XX:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/microsoft.graph.event'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: operation
+    delete:
+      tags:
+        - me.event
+      summary: Delete event
+      description: 'Removes the specified event from the containing calendar.  If the event is a meeting, deleting the event on the organizer''s calendar sends a cancellation message to the meeting attendees.'
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-delete?view=graph-rest-1.0
+      operationId: me.DeleteEvents
+      parameters:
+        - name: If-Match
+          in: header
+          description: ETag
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Success
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: operation
+    parameters:
+      - name: event-id
+        in: path
+        description: The unique identifier of event
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: event
+  /me/events/{event-id}/accept:
+    post:
+      tags:
+        - me.event
+      summary: Invoke action accept
+      description: Accept the specified event in a user calendar.
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-accept?view=graph-rest-1.0
+      operationId: me.events.event.accept
+      requestBody:
+        description: Action parameters
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                SendResponse:
+                  type: boolean
+                  default: false
+                  nullable: true
+                Comment:
+                  type: string
+                  nullable: true
+        required: true
+      responses:
+        '204':
+          description: Success
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: action
+    parameters:
+      - name: event-id
+        in: path
+        description: The unique identifier of event
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: event
+  /me/events/{event-id}/cancel:
+    post:
+      tags:
+        - me.event
+      summary: Invoke action cancel
+      description: "This action allows the organizer of a meeting to send a cancellation message and cancel the event.  The action moves the event to the Deleted Items folder. The organizer can also cancel an occurrence of a recurring meeting \r\nby providing the occurrence event ID. An attendee calling this action gets an error (HTTP 400 Bad Request), with the following\r\nerror message: 'Your request can't be completed. You need to be an organizer to cancel a meeting.' This action differs from Delete in that Cancel is available to only the organizer, and lets\r\nthe organizer send a custom message to the attendees about the cancellation."
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-cancel?view=graph-rest-1.0
+      operationId: me.events.event.cancel
+      requestBody:
+        description: Action parameters
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                Comment:
+                  type: string
+                  nullable: true
+        required: true
+      responses:
+        '204':
+          description: Success
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: action
+    parameters:
+      - name: event-id
+        in: path
+        description: The unique identifier of event
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: event
+  /me/events/{event-id}/decline:
+    post:
+      tags:
+        - me.event
+      summary: Invoke action decline
+      description: 'Decline invitation to the specified event in a user calendar. If the event allows proposals for new times, on declining the event, an invitee can choose to suggest an alternative time by including the proposedNewTime parameter. For more information on how to propose a time, and how to receive and accept a new time proposal, see Propose new meeting times.'
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-decline?view=graph-rest-1.0
+      operationId: me.events.event.decline
+      requestBody:
+        description: Action parameters
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ProposedNewTime:
+                  anyOf:
+                    - $ref: '#/components/schemas/microsoft.graph.timeSlot'
+                    - type: object
+                      nullable: true
+                SendResponse:
+                  type: boolean
+                  default: false
+                  nullable: true
+                Comment:
+                  type: string
+                  nullable: true
+        required: true
+      responses:
+        '204':
+          description: Success
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: action
+    parameters:
+      - name: event-id
+        in: path
+        description: The unique identifier of event
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: event
+  /me/events/{event-id}/tentativelyAccept:
+    post:
+      tags:
+        - me.event
+      summary: Invoke action tentativelyAccept
+      description: 'Tentatively accept the specified event in a user calendar. If the event allows proposals for new times, on responding tentative to the event, an invitee can choose to suggest an alternative time by including the proposedNewTime parameter. For more information on how to propose a time, and how to receive and accept a new time proposal, see Propose new meeting times.'
+      externalDocs:
+        description: Find more info here
+        url: https://learn.microsoft.com/graph/api/event-tentativelyaccept?view=graph-rest-1.0
+      operationId: me.events.event.tentativelyAccept
+      requestBody:
+        description: Action parameters
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ProposedNewTime:
+                  anyOf:
+                    - $ref: '#/components/schemas/microsoft.graph.timeSlot'
+                    - type: object
+                      nullable: true
+                SendResponse:
+                  type: boolean
+                  default: false
+                  nullable: true
+                Comment:
+                  type: string
+                  nullable: true
+        required: true
+      responses:
+        '204':
+          description: Success
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: action
+    parameters:
+      - name: event-id
+        in: path
+        description: The unique identifier of event
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: event
   /me/joinedTeams:
     get:
       tags:
@@ -2635,6 +2907,80 @@ paths:
           $ref: '#/components/responses/error'
         5XX:
           $ref: '#/components/responses/error'
+      x-ms-docs-operation-type: operation
+    parameters:
+      - name: user-id
+        in: path
+        description: The unique identifier of user
+        required: true
+        schema:
+          type: string
+        x-ms-docs-key-type: user
+  /users/{user-id}/calendar/calendarView:
+    get:
+      tags:
+        - users.calendar
+      summary: Get calendarView from users
+      description: The calendar view for the calendar. Navigation property. Read-only.
+      operationId: users.calendar.ListCalendarView
+      parameters:
+        - name: startDateTime
+          in: query
+          description: 'The start date and time of the time range, represented in ISO 8601 format. For example, 2019-11-08T19:00:00-08:00'
+          required: true
+          schema:
+            type: string
+        - name: endDateTime
+          in: query
+          description: 'The end date and time of the time range, represented in ISO 8601 format. For example, 2019-11-08T20:00:00-08:00'
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/top'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/filter'
+        - $ref: '#/components/parameters/count'
+        - name: $orderby
+          in: query
+          description: Order items by property values
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $select
+          in: query
+          description: Select properties to be returned
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+        - name: $expand
+          in: query
+          description: Expand related entities
+          style: form
+          explode: false
+          schema:
+            uniqueItems: true
+            type: array
+            items:
+              type: string
+      responses:
+        2XX:
+          $ref: '#/components/responses/microsoft.graph.eventCollectionResponse'
+        4XX:
+          $ref: '#/components/responses/error'
+        5XX:
+          $ref: '#/components/responses/error'
+      x-ms-pageable:
+        nextLinkName: '@odata.nextLink'
+        operationName: listMore
       x-ms-docs-operation-type: operation
     parameters:
       - name: user-id
@@ -8460,6 +8806,17 @@ components:
               type: string
               default: '#microsoft.graph.event'
       x-ms-discriminator-value: '#microsoft.graph.event'
+    microsoft.graph.eventCollectionResponse:
+      title: Collection of event
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseCollectionPaginationCountResponse'
+        - type: object
+          properties:
+            value:
+              type: array
+              items:
+                $ref: '#/components/schemas/microsoft.graph.event'
     microsoft.graph.eventMessageDetail:
       title: eventMessageDetail
       type: object
@@ -23914,6 +24271,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/microsoft.graph.driveItemCollectionResponse'
+    microsoft.graph.eventCollectionResponse:
+      description: Retrieved collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/microsoft.graph.eventCollectionResponse'
     microsoft.graph.personCollectionResponse:
       description: Retrieved collection
       content:

@@ -48,6 +48,11 @@ func handleSearch(c *handlerCtx) {
 		return
 	}
 	req := env.Requests[0]
+	// An event search is a different query language and a different result
+	// shape, so it is served from handlers_calendar.go (Phase 6).
+	if handleEventSearch(c, req) {
+		return
+	}
 	if len(req.EntityTypes) != 1 || !strings.EqualFold(req.EntityTypes[0], "chatMessage") {
 		// chatMessage cannot be mixed with another entity type
 		// (refs/graph/api-reference/v1.0/resources/search-api-overview.md:184;

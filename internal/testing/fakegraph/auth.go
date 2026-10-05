@@ -49,6 +49,18 @@ var scopeAlternatives = map[string][]string{
 	"Files.ReadWrite":     {"Files.ReadWrite", "Files.ReadWrite.All"},
 	"Sites.Read.All":      {"Sites.Read.All", "Files.Read.All"},
 	"Sites.ReadWrite.All": {"Sites.ReadWrite.All", "Files.ReadWrite.All"},
+	// Calendar (PLAN.md Phase 6). The read chain is ReadBasic → Read →
+	// ReadWrite → ReadWrite.Shared, and the shared variants also serve the
+	// calendarView of another user
+	// (refs/graph/api-reference/v1.0/includes/permissions/user-list-calendarview-permissions.md:9;
+	// plans/calendar.md §3, F1).
+	"Calendars.ReadBasic":        {"Calendars.ReadBasic", "Calendars.Read", "Calendars.ReadWrite"},
+	"Calendars.Read":             {"Calendars.Read", "Calendars.ReadWrite"},
+	"Calendars.ReadWrite":        {"Calendars.ReadWrite"},
+	"Calendars.Read.Shared":      {"Calendars.Read.Shared", "Calendars.ReadWrite.Shared", "Calendars.Read", "Calendars.ReadWrite"},
+	"Calendars.ReadWrite.Shared": {"Calendars.ReadWrite.Shared", "Calendars.ReadWrite"},
+	"OnlineMeetings.Read":        {"OnlineMeetings.Read", "OnlineMeetings.ReadWrite"},
+	"OnlineMeetings.ReadWrite":   {"OnlineMeetings.ReadWrite"},
 }
 
 // scopeAlternativesOf returns the documented alternatives for a required

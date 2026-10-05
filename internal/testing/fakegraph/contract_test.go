@@ -43,6 +43,15 @@ type contractCall struct {
 // contractCalls maps every route in contract.Routes() the fake implements to a
 // concrete request against testModel. A template that is missing here is a test
 // bug, not a skip.
+// calendarViewSelectForTest is the $select the calendar commands send, spelled
+// out here because the fakegraph package cannot import the graph package's
+// constant without a cycle. The value is plans/calendar.md §4.3; isOnlineMeeting
+// must stay in the list or calendarView omits onlineMeeting
+// (plans/calendar.md §3, F3).
+const calendarViewSelectForTest = "id,subject,start,end,isAllDay,isCancelled,showAs,organizer," +
+	"isOrganizer,isOnlineMeeting,onlineMeeting,onlineMeetingProvider,location,responseStatus," +
+	"webLink,type,seriesMasterId"
+
 var contractCalls = map[string]contractCall{
 	// Teams and channels.
 	"GET /me":                                    {path: "/me"},
@@ -110,6 +119,27 @@ var contractCalls = map[string]contractCall{
 			"size":        5,
 		}},
 	}},
+
+	// Calendar (PLAN.md Phase 6).
+	"GET /users/{user-id}/calendarView": {path: "/users/u-alice/calendarView", query: url.Values{
+		"startDateTime": {"2026-01-01T00:00:00Z"},
+		"endDateTime":   {"2026-01-06T00:00:00Z"},
+		"$top":          {"100"},
+		"$select":       {"id,subject,start,end,isAllDay,isCancelled,showAs,organizer,isOrganizer,isOnlineMeeting,onlineMeeting,onlineMeetingProvider,location,responseStatus,webLink,type,seriesMasterId"},
+	}},
+	"GET /users/{user-id}/calendar/calendarView": {path: "/users/u-alice/calendar/calendarView", query: url.Values{
+		"startDateTime": {"2026-01-02T00:00:00Z"},
+		"endDateTime":   {"2026-01-03T00:00:00Z"},
+		"$top":          {"100"},
+		"$select":       {calendarViewSelectForTest},
+	}},
+	"GET /me/events/{event-id}":                    {path: "/me/events/ev-standup"},
+	"PATCH /me/events/{event-id}":                  {path: "/me/events/ev-standup", body: map[string]any{"subject": "patched"}},
+	"DELETE /me/events/{event-id}":                 {path: "/me/events/ev-cancelled"},
+	"POST /me/events/{event-id}/accept":            {path: "/me/events/ev-review/accept", body: map[string]any{"comment": "ok", "sendResponse": true}},
+	"POST /me/events/{event-id}/tentativelyAccept": {path: "/me/events/ev-review/tentativelyAccept", body: map[string]any{"comment": "maybe", "sendResponse": false}},
+	"POST /me/events/{event-id}/decline":           {path: "/me/events/ev-review/decline", body: map[string]any{"comment": "no", "sendResponse": true}},
+	"POST /me/events/{event-id}/cancel":            {path: "/me/events/ev-standup/cancel", body: map[string]any{"comment": "cancelled"}},
 
 	// Files.
 	"GET /teams/{team-id}/channels/{channel-id}/filesFolder": {path: "/teams/t-eng/channels/c-general/filesFolder"},

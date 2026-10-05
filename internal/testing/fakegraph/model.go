@@ -70,6 +70,22 @@ type Model struct {
 	Chats []Chat
 	// Drives carry drive items (files and folders).
 	Drives []Drive
+	// CalendarEvents are the seeded calendar events, keyed by the mailbox owner
+	// they belong to. An event with OwnerID "" belongs to [Model.Me], whose
+	// calendar is always readable by the signed-in user.
+	//
+	// The calendar routes reproduce the behaviour the handoff verified live on
+	// 2026-10-05 (plans/calendar.md §3): a 1825-day calendarView window, an
+	// onlineMeeting that is dropped unless isOnlineMeeting is selected, floating
+	// all-day events, a 62-day getSchedule window, a null scheduleItems plus a
+	// "5016" error, and the /users/{id}/calendarView access failures.
+	CalendarEvents []CalendarEvent
+	// CalendarAccess says how the signed-in user may see another user's
+	// calendar. The key is the owner's user id and the value is one of the
+	// [CalendarAccessNone], [CalendarAccessFreeBusy] or [CalendarAccessRead]
+	// constants; a missing entry means "not shared", which is the 403
+	// ErrorAccessDenied case.
+	CalendarAccess map[string]string
 	// MyDriveID is the drive GET /me/drive reports, which is where a chat file
 	// attachment is uploaded (refs/teams-mcp/src/utils/file-upload.ts:256). It
 	// defaults to [DefaultMyDriveID]; seed a Drive with that id to give the
@@ -94,6 +110,97 @@ type User struct {
 	// relevance … determined by the user's communication and collaboration
 	// patterns" (refs/graph/api-reference/v1.0/api/user-list-people.md:12).
 	Relevance float64
+	// NoMailbox marks a user that exists but has no Exchange Online mailbox.
+	// /users/{id}/calendarView then answers 404 MailboxNotEnabledForRESTAPI and
+	// getSchedule answers a "5016" per-schedule error, which is the pair of
+	// cases the handoff could not tell apart with only one mailbox missing
+	// (plans/calendar.md §3, F4 and F7).
+	NoMailbox bool
+	// OnlineMeetingProviders is the mailbox's allowedOnlineMeetingProviders,
+	// which GET /me/calendar reports. It defaults to
+	// [DefaultOnlineMeetingProviders]; set it to a list without
+	// "teamsForBusiness" to exercise the silently-dropped Teams meeting
+	// (plans/calendar.md §3, F10).
+	OnlineMeetingProviders []string
+}
+
+// Calendar access levels, as [Model.CalendarAccess] values.
+const (
+	// CalendarAccessNone is a calendar that is not shared at all: the calendar
+	// view answers 403 ErrorAccessDenied and the CLI falls back to free/busy.
+	CalendarAccessNone = "none"
+	// CalendarAccessFreeBusy is a calendar shared as free/busy only, which the
+	// live tenant answered with 404 ErrorItemNotFound rather than 403.
+	CalendarAccessFreeBusy = "freeBusy"
+	// CalendarAccessRead is a calendar shared in full, so /users/{id}/calendarView
+	// returns the events.
+	CalendarAccessRead = "read"
+)
+
+// Calendar event kinds, as [CalendarEvent.Kind] values.
+const (
+	// CalendarEventTimed is a normal timed event.
+	CalendarEventTimed = "timed"
+	// CalendarEventAllDay is a floating all-day event: Graph always returns it
+	// as 00:00:00 to 00:00:00 on its own dates, whatever zone was requested
+	// (plans/calendar.md §3, F5).
+	CalendarEventAllDay = "allDay"
+)
+
+// CalendarEvent is one seeded calendar event.
+//
+// Start and End are instants for a timed event and the event's own dates for an
+// all-day one; [Model.withDefaults] converts the latter from [CalendarEvent.Start]
+// and [CalendarEvent.End] (or [CalendarEvent.Days]).
+type CalendarEvent struct {
+	// ID defaults to "event-<n>".
+	ID string
+	// OwnerID is the mailbox the event lives in; "" means [Model.Me].
+	OwnerID string
+	// Subject is the event subject.
+	Subject string
+	// Kind defaults to [CalendarEventTimed].
+	Kind string
+	// Start and End are the event's instants, in any location.
+	Start time.Time
+	End   time.Time
+	// Days is the length in days of an all-day event. Zero means one day.
+	Days int
+	// ShowAs defaults to "busy".
+	ShowAs string
+	// IsCancelled marks a cancelled event, which the CLI hides unless
+	// --include-cancelled.
+	IsCancelled bool
+	// OrganizerName is the organizer's display name; "" means the owner.
+	OrganizerName string
+	// IsOrganizer marks the event as organized by the mailbox owner, which is
+	// what the Phase 6b pre-checks read.
+	IsOrganizer bool
+	// AllowNewTimeProposals is the Phase 6b pre-check field; nil means the
+	// documented default of true.
+	AllowNewTimeProposals *bool
+	// Location is the location display name.
+	Location string
+	// Teams marks a Teams online meeting. It sets isOnlineMeeting,
+	// onlineMeetingProvider and onlineMeeting.joinUrl.
+	Teams bool
+	// JoinURL overrides the generated join URL for a Teams meeting.
+	JoinURL string
+	// Response is the signed-in user's responseStatus.response.
+	Response string
+	// Type defaults to "singleInstance".
+	Type string
+	// SeriesMasterID is set when the event is part of a recurring series.
+	SeriesMasterID string
+	// WebLink overrides the generated webLink.
+	WebLink string
+	// NoMailbox makes every calendar lookup for this event's owner answer as if
+	// the mailbox were missing, without touching the owner's User entry.
+	NoMailbox bool
+
+	// Derived by [Model.withDefaults]; not part of the seed.
+	allDayStart string
+	allDayEnd   string
 }
 
 // Member is a conversation member. Roles are the documented strings: "owner",
@@ -265,7 +372,19 @@ const (
 	// DefaultMyDriveID is the id GET /me/drive reports when the seed does not
 	// name one.
 	DefaultMyDriveID = "drive-me"
+	// defaultShowAs is the free/busy status of a seeded event that does not
+	// name one (refs/graph/api-reference/v1.0/resources/event.md, "showAs").
+	defaultShowAs = "busy"
+	// defaultEventType is the type of a seeded event that does not name one.
+	defaultEventType = "singleInstance"
 )
+
+// DefaultOnlineMeetingProviders is the allowedOnlineMeetingProviders list a
+// mailbox reports unless the seed overrides it. It contains teamsForBusiness,
+// so `teams calendar create --teams` succeeds by default; seed a User with a
+// list without that entry to exercise the mailbox that silently ignores
+// isOnlineMeeting (plans/calendar.md §3, F10).
+var DefaultOnlineMeetingProviders = []string{"teamsForBusiness"}
 
 func (m Model) withDefaults() Model {
 	if strings.TrimSpace(m.Me) == "" {
@@ -350,6 +469,45 @@ func (m Model) withDefaults() Model {
 	}
 	if m.MyDriveID == "" {
 		m.MyDriveID = DefaultMyDriveID
+	}
+	for ci := range m.CalendarEvents {
+		ev := &m.CalendarEvents[ci]
+		if ev.ID == "" {
+			ev.ID = fmt.Sprintf("event-%d", ci+1)
+		}
+		if ev.OwnerID == "" {
+			ev.OwnerID = m.Me
+		}
+		if ev.Kind == "" {
+			ev.Kind = CalendarEventTimed
+		}
+		if ev.ShowAs == "" {
+			ev.ShowAs = defaultShowAs
+		}
+		if ev.Type == "" {
+			ev.Type = defaultEventType
+		}
+		if ev.Kind == CalendarEventAllDay {
+			days := ev.Days
+			if days < 1 {
+				days = 1
+			}
+			// An all-day event is seeded by its own dates, so Start is only a
+			// carrier for the date and the zone is irrelevant (plans/calendar.md
+			// §3, F5).
+			from := ev.Start
+			if from.IsZero() {
+				from = ev.End
+			}
+			ev.allDayStart = from.Format("2006-01-02")
+			ev.allDayEnd = from.AddDate(0, 0, days).Format("2006-01-02")
+		}
+		if ev.Start.IsZero() && ev.Kind == CalendarEventTimed {
+			ev.Start = ev.End
+		}
+		if ev.End.IsZero() && ev.Kind == CalendarEventTimed {
+			ev.End = ev.Start.Add(30 * time.Minute)
+		}
 	}
 	return m
 }

@@ -135,6 +135,12 @@ func (s *Server) validateContract(method, rel string, query url.Values, body []b
 	if isDriveItemAddressing(rel) {
 		return
 	}
+	// The Phase 6 calendar reads are documented by the api-reference under paths
+	// Microsoft's OpenAPI description does not declare. See
+	// isCalendarPathOutsideSpec.
+	if isCalendarPathOutsideSpec(rel) {
+		return
+	}
 	s.opts.Contract.validate(method, rel, query, body, status, resp)
 }
 
@@ -142,6 +148,26 @@ func (s *Server) validateContract(method, rel string, query url.Values, body []b
 // item routes (see validateContract).
 func isDriveItemAddressing(rel string) bool {
 	return strings.HasPrefix(rel, "/drives/") && strings.Contains(rel, ":/")
+}
+
+// isCalendarPathOutsideSpec reports whether rel is a Phase 6 calendar route that
+// the api-reference documents and Microsoft's OpenAPI description does not.
+//
+// The description spells the calendar surface differently: it declares
+// /users/{user-id}/calendarView but no /me/calendarView, /me/calendar/events/...
+// but no /me/events/..., and neither /me/calendar/getSchedule nor
+// /me/onlineMeetings. internal/testing/contract/routes.go explains why those
+// routes are absent from the committed list; the fake still serves them, because
+// they are what the live service answers and therefore what the CLI sends, so
+// the hook skips them rather than reporting a spec gap as a failure
+// (plans/calendar.md §4.3, §4.5).
+func isCalendarPathOutsideSpec(rel string) bool {
+	switch rel {
+	case "/me/calendarView", "/me/calendar/getSchedule", "/me/onlineMeetings", "/me/calendar":
+		return true
+	default:
+		return false
+	}
 }
 
 // isChannelHostedContentValue reports whether rel is the channel form of the
