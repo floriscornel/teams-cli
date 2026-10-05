@@ -66,7 +66,12 @@ func buildRoutes() []routeDef {
 		// are Chat.Read, Chat.ReadWrite and ChannelMessage.Read.All
 		// (refs/graph/api-reference/v1.0/resources/search-api-overview.md,
 		// refs/INDEX.md's search note).
-		{method: "POST", pattern: "/search/query", scopes: []string{"Chat.Read", "Chat.ReadWrite", "ChannelMessage.Read.All"}, fn: handleSearch},
+		// /search/query serves several entity types and its permission set depends
+		// on the one asked for: chatMessage needs Chat.Read / Chat.ReadWrite /
+		// ChannelMessage.Read.All, and `event` needs Calendars.Read (Phase 6).
+		// The route therefore accepts the union; the handler decides which entity
+		// types it can serve at all.
+		{method: "POST", pattern: "/search/query", scopes: []string{"Chat.Read", "Chat.ReadWrite", "ChannelMessage.Read.All", "Calendars.Read", "Calendars.ReadWrite"}, fn: handleSearch},
 		{method: "GET", pattern: "/users", scopes: []string{"User.ReadBasic.All"}, fn: handleListUsers},
 		{method: "GET", pattern: "/users/{user-id}", scopes: []string{"User.ReadBasic.All"}, fn: handleGetUser},
 		{method: "GET", pattern: "/me/people", scopes: []string{"People.Read"}, fn: handlePeople},

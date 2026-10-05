@@ -31,6 +31,7 @@ non-interactive mode.
 * [teams api](teams_api.md)	 - Call Microsoft Graph directly
 * [teams auth](teams_auth.md)	 - Sign in, inspect the session and sign out
 * [teams cache](teams_cache.md)	 - Inspect and clear the local cache
+* [teams calendar](teams_calendar.md)	 - List, show and search your calendar
 * [teams channel](teams_channel.md)	 - List, read and inspect channels
 * [teams chat](teams_chat.md)	 - List, show, read and manage your chats
 * [teams config](teams_config.md)	 - Read and write the config file

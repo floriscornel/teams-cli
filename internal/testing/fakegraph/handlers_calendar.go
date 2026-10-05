@@ -498,7 +498,7 @@ func handleGetSchedule(c *handlerCtx) {
 	defer st.mu.RUnlock()
 	out := make([]map[string]any, 0, len(body.Schedules))
 	for _, address := range body.Schedules {
-		out = append(out, st.scheduleForLocked(c.s, address))
+		out = append(out, st.scheduleForLocked(address))
 	}
 	c.json(http.StatusOK, map[string]any{"value": out})
 }
@@ -512,7 +512,7 @@ func handleGetSchedule(c *handlerCtx) {
 //
 // Another user's unshared calendar yields items carrying only start, end and
 // status, and your own calendar yields subject and location as well.
-func (s *store) scheduleForLocked(srv *Server, address string) map[string]any {
+func (s *store) scheduleForLocked(address string) map[string]any {
 	u := s.lookupUser(address)
 	if u == nil || u.noMailbox {
 		return map[string]any{
@@ -677,6 +677,17 @@ func handleEventSearch(c *handlerCtx, req searchRequestWire) (handled bool) {
 	if len(req.EntityTypes) != 1 || !strings.EqualFold(req.EntityTypes[0], "event") {
 		return false
 	}
+	// The search endpoint's permission set depends on the entity type, and the
+	// route table can only list the union, so the calendar scope is checked here
+	// (refs/graph/concepts/search-concept-events.md:13).
+	if missing := missingScope([]string{"Calendars.Read", "Calendars.ReadWrite"}, c.granted); missing != "" {
+		c.fail(&apiError{
+			Status: http.StatusForbidden, Code: "Authorization_RequestDenied",
+			Message: "API requires one of '" + strings.Join(
+				scopeAlternativesOf(missing), ", ") + "'.",
+		})
+		return true
+	}
 	size := 25
 	if req.Size != nil {
 		size = *req.Size
@@ -698,7 +709,15 @@ func handleEventSearch(c *handlerCtx, req searchRequestWire) (handled bool) {
 			matches = append(matches, ev)
 		}
 	}
-	sort.SliceStable(matches, func(i, j int) bool { return matches[i].id < matches[j].id })
+	// The service does not sort for events (refs/graph/concepts/search-concept-events.md:98),
+	// so the fake keeps a stable, start-ordered result: that is deterministic and
+	// more useful than a random order, without pretending a sort clause works.
+	sort.SliceStable(matches, func(i, j int) bool {
+		if !matches[i].start.Equal(matches[j].start) {
+			return matches[i].start.Before(matches[j].start)
+		}
+		return matches[i].id < matches[j].id
+	})
 	from := 0
 	if req.From != nil {
 		from = *req.From

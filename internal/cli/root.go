@@ -411,6 +411,10 @@ func (a *App) newRootCmd() *cobra.Command {
 		a.newReactCmd(),
 		a.newAPICmd(),
 	)
+	// Phase 6: the calendar (read side; the write verbs land in 6b).
+	root.AddCommand(
+		a.newCalendarCmd(),
+	)
 	return root
 }
 

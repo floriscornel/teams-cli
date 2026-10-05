@@ -91,6 +91,11 @@ func TestScripts(t *testing.T) {
 				// Layer 6: every request and response these scripts produce is
 				// checked against the trimmed Graph OpenAPI description.
 				Contract: fakegraph.WithContract(t),
+				// The scripts set TEAMS_ACCESS_TOKEN, whose scp claim is what a
+				// user's real token carries; honouring only that is what makes
+				// calendar_scope.txtar exercise a genuine missing-scope refusal
+				// rather than the fake's permissive default grant.
+				ScopesFromTokenOnly: true,
 			})
 			servers.add(graph)
 			// testscript defaults HOME to /no-home, which makes the macOS
@@ -110,6 +115,13 @@ func TestScripts(t *testing.T) {
 			// The write scripts need a token that carries the Phase 4 scopes;
 			// the read scripts keep their own inline token.
 			e.Setenv("TEAMS_TEST_WRITE_TOKEN", scriptsWriteToken())
+			// The calendar scripts need the Phase 6 read scopes, which no
+			// preset carries.
+			e.Setenv("TEAMS_TEST_CALENDAR_TOKEN", scriptsCalendarToken())
+			e.Setenv("TEAMS_TEST_CALENDAR_NOCHAT_TOKEN", scriptsTokenWith(scriptsCalendarNoChatScopes))
+			e.Setenv("TEAMS_TEST_READ_TOKEN", scriptsTokenWith(scriptsToken))
+			e.Setenv("TEAMS_TEST_CALENDAR_ONLY_TOKEN", scriptsTokenWith(scriptsCalendarOnlyScopes))
+			e.Setenv("TEAMS_TEST_CALENDAR_NOCHAT_TOKEN", scriptsTokenWith(scriptsCalendarNoChatScopes))
 			// Deterministic, unstyled output.
 			e.Setenv("NO_COLOR", "1")
 			e.Setenv("TERM", "dumb")
@@ -181,6 +193,9 @@ func scriptsModel(now time.Time) fakegraph.Model {
 			// A fourth user nobody is a member of yet, so `chat add-member` has
 			// someone to add.
 			{ID: "user-4", DisplayName: "Carol Chen", UserPrincipalName: "carol@example.com", Mail: "carol@example.com", JobTitle: "Designer", Relevance: 0.3},
+			// A fifth user with no Exchange Online mailbox, so the calendar
+			// scripts can exercise the 404 MailboxNotEnabledForRESTAPI path.
+			{ID: "user-5", DisplayName: "Dave Kim", UserPrincipalName: "dave@example.com", Mail: "dave@example.com", NoMailbox: true},
 		},
 		Teams: []fakegraph.Team{{
 			ID:          "team-eng",
@@ -281,7 +296,108 @@ func scriptsModel(now time.Time) fakegraph.Model {
 				{ID: "item-2", Name: "archive", ParentID: "folder-general", Folder: true, Created: now.Add(-40 * time.Hour)},
 			},
 		}},
+		CalendarEvents: calendarScriptEvents(now),
+		// The calendar scripts list another user with each access level: Bob's
+		// calendar is shared in full, Yuki's as free/busy only, and Carol's is
+		// not shared at all (403 ErrorAccessDenied). Dave has no mailbox.
+		CalendarAccess: map[string]string{
+			"user-2": fakegraph.CalendarAccessRead,
+			"user-3": fakegraph.CalendarAccessFreeBusy,
+		},
 	}
+}
+
+// calendarScriptEvents seeds the calendar events the scripts list. Every instant
+// is a fixed Tokyo wall clock time on the Tokyo day that is current when the
+// test starts, and the scripts pin TZ=Asia/Tokyo, so the rendered times are the
+// same whatever the wall clock says (scriptsModel takes a relative `now` for the
+// same reason).
+func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		// Without the zone database the scripts cannot assert on times; the
+		// scripts' TZ would not resolve either, so this is not silent.
+		panic("Asia/Tokyo is unavailable: " + err.Error())
+	}
+	today := now.In(tokyo)
+	at := func(hour, minute int) time.Time {
+		return time.Date(today.Year(), today.Month(), today.Day(), hour, minute, 0, 0, tokyo)
+	}
+	return []fakegraph.CalendarEvent{
+		{
+			ID: "cal-standup", Subject: "Standup", Start: at(9, 0), End: at(9, 30),
+			ShowAs: "busy", Teams: true, IsOrganizer: true, Location: "Teams",
+			JoinURL: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_standup%40thread.v2/0?context=%7b%22Tid%22%3a%22t%22%7d",
+		},
+		{
+			ID: "cal-review", Subject: "Design review", Start: at(14, 0), End: at(15, 0),
+			ShowAs: "tentative", OrganizerName: "Bob Builder", Location: "Room 4",
+			Response: "tentativelyAccepted",
+		},
+		{
+			ID: "cal-holiday", Subject: "Company holiday", Kind: fakegraph.CalendarEventAllDay,
+			Start: at(0, 0), Days: 1, ShowAs: "oof", IsOrganizer: true,
+		},
+		{
+			ID: "cal-cancelled", Subject: "Cancelled sync", Start: at(16, 0), End: at(16, 30),
+			IsCancelled: true, IsOrganizer: true,
+		},
+		{
+			// Yesterday in Tokyo, so it must not appear in a listing of today
+			// even though the server window is widened by a day.
+			ID: "cal-yesterday", Subject: "Yesterday standup", Start: at(9, 0).AddDate(0, 0, -1), End: at(9, 30).AddDate(0, 0, -1),
+			ShowAs: "busy", IsOrganizer: true,
+		},
+		{
+			// Tomorrow in Tokyo, for the --date tomorrow assertion.
+			ID: "cal-tomorrow", Subject: "Planning", Start: at(11, 0).AddDate(0, 0, 1), End: at(12, 0).AddDate(0, 0, 1),
+			ShowAs: "busy", OrganizerName: "Yuki Tanaka", IsOrganizer: true,
+		},
+		{
+			// Yesterday's UTC date, which is what an all-day event matched as
+			// UTC midnight to midnight would drag into today's window
+			// (plans/calendar.md §3, F5). It belongs to yesterday in Tokyo and
+			// must be filtered out.
+			ID: "cal-utc-yesterday", Subject: "UTC yesterday", Kind: fakegraph.CalendarEventAllDay,
+			Start: at(0, 0).AddDate(0, 0, -1), Days: 1, ShowAs: "busy", IsOrganizer: true,
+		},
+		{
+			ID: "cal-bob-1", OwnerID: "user-2", Subject: "Bob review", Start: at(10, 0), End: at(11, 0),
+			OrganizerName: "Bob Builder", IsOrganizer: true,
+		},
+		{
+			ID: "cal-yuki-busy", OwnerID: "user-3", Subject: "Yuki interview", Start: at(13, 0), End: at(14, 0),
+			ShowAs: "busy", IsOrganizer: true,
+		},
+	}
+}
+
+// scriptsCalendarScopes is what the calendar scripts need: the read scope, the
+// shared scope for another user's calendar, and OnlineMeetings.Read for
+// `list --chat` and `show`.
+// User.Read is in the set because every calendar command resolves the signed-in
+// user first, to tell your own calendar from a colleague's.
+const scriptsCalendarScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
+
+// scriptsCalendarNoChatScopes is the calendar read set WITHOUT OnlineMeetings.Read,
+// so a script can exercise `show`'s degraded chat note.
+const scriptsCalendarNoChatScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite"
+
+// scriptsCalendarOnlyScopes is the calendar read set a fully consented profile
+// carries: the reads plus the chat scope.
+const scriptsCalendarOnlyScopes = "User.Read Calendars.Read Calendars.Read.Shared Calendars.ReadWrite OnlineMeetings.Read"
+
+// scriptsCalendarToken mints the token the calendar scripts use.
+func scriptsCalendarToken() string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	claims, _ := json.Marshal(map[string]any{
+		"aud":                "00000003-0000-0000-c000-000000000000",
+		"tid":                "11111111-2222-3333-4444-555555555555",
+		"preferred_username": "alice@example.com",
+		"scp":                scriptsCalendarScopes,
+		"exp":                1893456000,
+	})
+	return header + "." + base64.RawURLEncoding.EncodeToString(claims) + "."
 }
 
 // scriptsToken is the scope set the scripts' tokens carry: every read scope
@@ -305,6 +421,20 @@ func scriptsWriteToken() string {
 		"tid":                "11111111-2222-3333-4444-555555555555",
 		"preferred_username": "alice@example.com",
 		"scp":                scriptsWriteScopes,
+		"exp":                1893456000,
+	})
+	return header + "." + base64.RawURLEncoding.EncodeToString(claims) + "."
+}
+
+// scriptsTokenWith mints a token carrying exactly the given scopes, for a script
+// that needs to leave one out.
+func scriptsTokenWith(scp string) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	claims, _ := json.Marshal(map[string]any{
+		"aud":                "00000003-0000-0000-c000-000000000000",
+		"tid":                "11111111-2222-3333-4444-555555555555",
+		"preferred_username": "alice@example.com",
+		"scp":                scp,
 		"exp":                1893456000,
 	})
 	return header + "." + base64.RawURLEncoding.EncodeToString(claims) + "."

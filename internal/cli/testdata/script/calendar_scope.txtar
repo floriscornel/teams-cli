@@ -1,0 +1,52 @@
+# calendar scope handling on the TEAMS_ACCESS_TOKEN path.
+#
+# A static token is decode-only: the CLI cannot see its granted scopes, so it does
+# not pre-check them and the request itself is the check (PLAN.md:105). These
+# cases therefore assert the live refusals — which is exactly what a user whose
+# profile lacks the scope sees — and the graceful degradation of `show`, whose
+# chat lookup must not fail the command (plans/calendar.md §4.4).
+#
+# The scope pre-check itself (the exit-3 path with the admin-consent hint) is
+# covered by the unit tests in calendar_scope_test.go, because a static token
+# never reaches it.
+
+env TZ=Asia/Tokyo
+
+# A token with the Phase 3 read scopes and none of the calendar ones.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_READ_TOKEN
+
+# `list` is refused with a 403 that names the calendar scopes, and the hint says
+# an admin may have to consent (plans/calendar.md §3, F1).
+! exec teams calendar list
+stderr 'HTTP 403'
+stderr 'Calendars.Read'
+stderr 'admin'
+
+# `search` is refused as well. This token carries Chat.Read, so the refusal comes
+# from the calendar scope the event entity type needs.
+! exec teams calendar search standup
+stderr 'HTTP 403'
+stderr 'Calendars.Read'
+
+# Another user's calendar is refused by the calendarView request.
+! exec teams calendar list --user bob@example.com
+stderr 'HTTP 403'
+
+# `show` is refused too.
+! exec teams calendar show cal-standup
+stderr 'HTTP 403'
+
+# A token with the calendar reads but WITHOUT OnlineMeetings.Read: `--chat` cannot
+# fill the column, and because the CLI cannot see the token's scopes it leaves the
+# column empty rather than failing the listing.
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_CALENDAR_NOCHAT_TOKEN
+exec teams calendar list --chat
+stdout 'CHAT'
+stdout 'Standup'
+
+# `show` still shows everything, and says the chat needs the scope instead of
+# failing.
+exec teams calendar show cal-standup
+stdout 'subject:.*Standup'
+stdout 'teams meeting:.*yes'
+stdout 'chat:.*needs OnlineMeetings.Read'

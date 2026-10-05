@@ -1,0 +1,121 @@
+# calendar list and show: the compact table, the day/range flags, time zones, the
+# all-day rule, JSON and the short handles.
+#
+# TZ is pinned so "today" is Tokyo's day and the rendered wall-clock times are
+# the seeded ones, whatever the machine's zone is. The seed places every event at
+# a fixed Tokyo time on the Tokyo day the test starts (scriptsModel).
+
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_CALENDAR_TOKEN
+env TZ=Asia/Tokyo
+
+# Today: the compact columns. The wide ID is never printed; the handle is.
+exec teams calendar list
+stdout 'ID\tWHEN\tSUBJECT\tORGANIZER\tTEAMS'
+stdout '09:00–09:30\tStandup'
+stdout '14:00–15:00\tDesign review'
+stdout 'all day\tCompany holiday'
+stdout '✓'
+! stdout 'Cancelled sync'
+! stdout 'Yesterday standup'
+# An all-day event that sits on yesterday's UTC date is not in today's listing:
+# the floating rule (plans/calendar.md §3, F5) is what keeps it out.
+! stdout 'UTC yesterday'
+
+exec teams calendar list --json --jq '.[0].user'
+stdout '^me$'
+exec teams calendar list --json --jq '.[0].source'
+stdout '^events$'
+exec teams calendar list --json --jq '[.[].status] | sort | join(",")'
+stdout '^busy,oof,tentative$'
+exec teams calendar list --json --jq '.[0].handle | test("^[0-9a-f]{7}$")'
+stdout 'true'
+# All-day events come first within their day, and their JSON instants are the
+# event's own midnight in the display zone.
+exec teams calendar list --json --jq '.[0].allDay'
+stdout 'true'
+exec teams calendar list --json --jq '.[0].start'
+stdout 'T00:00:00\+09:00$'
+exec teams calendar list --json --jq '.[1].start'
+stdout 'T09:00:00\+09:00$'
+# The handle is the first 7 hex characters of the SHA-256 of the event id, so it
+# is the same on every run and can be written down here.
+exec teams calendar list --json --jq '.[1].handle'
+stdout '^1d69044$'
+
+# The ID column is a handle that `show` accepts.
+exec teams calendar show 1d69044
+stdout 'subject:.*Standup'
+stdout 'when:.*09:00–09:30'
+stdout 'teams meeting:.*yes'
+stdout 'join url:.*teams.microsoft.com'
+stdout 'chat:.*19:meeting_'
+stdout 'id:.*cal-standup'
+
+# A handle that was never cached is exit 4 with the fix.
+! exec teams calendar show aaaaaaa
+stderr 'no event is cached under the handle'
+stderr 'run `teams calendar list` first'
+
+# The full id works too, and an Outlook web link's ItemID is decoded.
+exec teams calendar show cal-standup
+stdout 'subject:.*Standup'
+exec teams calendar show 'https://outlook.office.com/calendar/item/cal-review?ItemID=cal-review'
+stdout 'subject:.*Design review'
+! exec teams calendar show 'https://outlook.office.com/calendar/item/cal-review'
+stderr 'without an ItemID parameter'
+
+# Tomorrow, and a one-day range: the Date column only appears for a range.
+exec teams calendar list --date tomorrow
+stdout 'Planning'
+! stdout 'Standup'
+
+exec teams calendar list --from today --to today --json --jq 'length'
+stdout '^3$'
+
+# A range longer than one day grows a Date column.
+exec teams calendar list --date today --days 2
+stdout '^DATE\tID\tWHEN'
+stdout '11:00–12:00\tPlanning'
+
+# --tz changes the rendered zone AND the day: the window is built from the
+# instant's date in that zone, so a day that has already started in Tokyo may
+# still be yesterday there. What is deterministic is the offset every time is
+# rendered with, whichever day the run lands on.
+exec teams calendar list --tz America/New_York
+! stdout '\+09:00'
+exec teams calendar list --tz Europe/Amsterdam --date tomorrow --days 1 --json --jq 'length'
+stdout '^0$|^1$'
+exec teams calendar list --tz America/New_York --date 2026-10-05 --json --jq '.[].start'
+stdout 'T(20:00:00|09:00:00)-04:00$|^$'
+exec teams calendar list --date 2026-10-05 --tz Europe/Amsterdam --json --jq '[.[] | select(.subject == "Standup")][0].start'
+stdout 'T02:00:00\+02:00$' 
+
+# --include-cancelled adds the cancelled row back.
+exec teams calendar list --include-cancelled
+stdout 'Cancelled sync'
+
+# --limit truncates and says so.
+exec teams calendar list --limit 1
+stderr 'showing first 1; use --all'
+exec teams calendar list --limit 1 --json --jq 'length'
+stdout '^1$'
+exec teams calendar list --all --json --jq 'length'
+stdout '^3$'
+
+# Bad day and time-zone values are usage errors.
+! exec teams calendar list --date someday
+stderr 'is not a day'
+! exec teams calendar list --tz Mars/Olympus
+stderr 'is not a known IANA time zone'
+! exec teams calendar list --from mon
+stderr '--from needs --to'
+! exec teams calendar list --to fri
+stderr '--to needs --from'
+! exec teams calendar list --from fri --to mon
+stderr 'is before'
+! exec teams calendar list --days 0
+stderr '--days must be at least 1'
+
+# A day nobody has an event on is an empty table, not an error.
+exec teams calendar list --date 2030-01-01
+! stdout 'Standup'

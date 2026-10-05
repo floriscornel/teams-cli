@@ -76,6 +76,15 @@ var Presets = map[string][]string{
 // (refs/graph/api-reference/v1.0/includes/permissions/chat-delete-permissions.md:9).
 var IncrementalScopes = map[string]string{
 	"Chat.ManageDeletion.All": "teams chat delete",
+	// The calendar scopes are requested at first use and belong to no preset:
+	// adding one to a preset makes every existing login ask for it, which is the
+	// AADSTS65001 failure commit f7bd612 fixed (PLAN.md "Authentication design",
+	// plans/calendar.md §4.8, decision D3).
+	"Calendars.Read":             "teams calendar list/show/search",
+	"Calendars.Read.Shared":      "teams calendar list/show/search",
+	"Calendars.ReadWrite":        "teams calendar write commands",
+	"Calendars.ReadWrite.Shared": "teams calendar list --user",
+	"OnlineMeetings.Read":        "teams calendar list --chat / show",
 }
 
 // AlternativeScopes are documented Graph scopes the CLI may name in the feature
@@ -101,6 +110,11 @@ var AlternativeScopes = map[string]string{
 	"ChannelSettings.Read.All": "needs admin consent and is never least privileged",
 	// Reaches every user in the tenant; User.ReadBasic.All is enough for us.
 	"User.Read.All": "wider than needed; User.ReadBasic.All covers user search",
+	// The calendarView permission table names Calendars.ReadBasic as least
+	// privileged, but the live service needed Calendars.Read for the free/busy
+	// detail and for subjects on your own calendar (plans/calendar.md §3, F1 and
+	// F7), so the CLI asks for Calendars.Read.
+	"Calendars.ReadBasic": "weaker than Calendars.Read, which the calendar commands need",
 }
 
 // DelegatedAdminConsentScopes are the scopes the Graph permissions reference

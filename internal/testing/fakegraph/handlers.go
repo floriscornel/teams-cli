@@ -16,6 +16,11 @@ type handlerCtx struct {
 	query  url.Values
 	body   []byte
 	rec    *RecordedRequest
+	// granted is the delegated scope set the request carries, so a handler whose
+	// permission set depends on the request body can check the scope it actually
+	// needs. /search/query is the case: its scopes differ per entity type, and the
+	// route table can only list their union.
+	granted []string
 }
 
 // param returns a path parameter captured by the route pattern, for example

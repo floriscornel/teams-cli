@@ -1,0 +1,82 @@
+# calendar list for other people: a shared calendar, the free/busy fallback, a
+# user with no mailbox, and the two range caps.
+#
+# TZ is pinned so "today" is Tokyo's day and the seeded wall-clock times are the
+# ones the assertions name (scriptsModel places every event at a fixed Tokyo
+# time on the Tokyo day the test starts).
+
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_CALENDAR_TOKEN
+env TZ=Asia/Tokyo
+
+# Bob's calendar is shared in full, so it is listed as events with subjects.
+exec teams calendar list --user bob@example.com
+stdout '^USER\tID\tWHEN\tSUBJECT\tORGANIZER\tTEAMS'
+stdout '^bob@example.com\t'
+stdout 'Bob review'
+stderr '^$'
+
+# Yuki's calendar is shared as free/busy only: the live service answers 404
+# ErrorItemNotFound for that, so the command falls back and says so.
+exec teams calendar list --user yuki@example.com
+stderr 'yuki@example.com: calendar not shared with you; showing free/busy'
+stdout '^USER\tID\tWHEN\tSUBJECT'
+stdout '\[busy\]'
+stdout '13:00–14:00'
+# A free/busy row has no handle, no organizer and no Teams mark.
+stdout '^yuki@example.com\t\t13:00–14:00\t\[busy\]\t\t$'
+
+# Carol's calendar is not shared at all: 403 ErrorAccessDenied, same fallback.
+! stderr 'error'
+exec teams calendar list --user carol@example.com
+stderr 'carol@example.com: calendar not shared with you; showing free/busy'
+
+# A user with no Exchange Online mailbox is reported and the listing carries on
+# with the users that worked.
+exec teams calendar list --user dave@example.com --user bob@example.com
+stderr 'dave@example.com: .*mailbox'
+stdout 'Bob review'
+
+# A user that does not exist cannot be read at all (404 ErrorInvalidUser), but the
+# signed-in user is always requested too and did succeed, so the listing is
+# printed and the failure is a warning on stderr — exit 0
+# (plans/calendar.md §4.3).
+exec teams calendar list --user nobody@example.invalid
+stderr 'ErrorInvalidUser'
+stdout 'Standup'
+
+# --free-busy skips the calendar view entirely and asks getSchedule for the
+# signed-in user alone, so there is no USER column (it appears only when more
+# than one user is listed). Subjects come from your own calendar.
+exec teams calendar list --free-busy
+stdout '^ID\tWHEN\tSUBJECT\tORGANIZER\tTEAMS'
+stdout 'Standup'
+# Your own schedule includes subjects, and no handle: a free/busy item is not
+# an event, so there is nothing for `show` to resolve.
+! stdout '1d69044'
+! stdout '00:00–00:00'
+
+# --free-busy with two users keeps the User column and no free rows.
+exec teams calendar list --free-busy --user bob@example.com --json --jq '[.[].source] | unique | join(",")'
+stdout '^freebusy$'
+exec teams calendar list --free-busy --user bob@example.com --json --jq '[.[].user] | unique | length'
+stdout '^2$'
+exec teams calendar list --free-busy --user bob@example.com --json --jq '[.[] | select(.user == "bob@example.com")] | length > 0'
+stdout '^true$'
+exec teams calendar list --free-busy --user bob@example.com --json --jq '[.[] | select(.status == "free")] | length'
+stdout '^0$'
+# A free/busy row carries no handle and no id.
+exec teams calendar list --free-busy --json --jq '[.[] | select(.handle != null or .id != null)] | length'
+stdout '^0$'
+
+# The same user twice is asked for once.
+exec teams calendar list --user bob@example.com --user bob@example.com --json --jq '[.[].user] | unique | length'
+stdout '^2$'
+
+# More than 62 days with another user is a usage error that names the limit.
+! exec teams calendar list --user bob@example.com --from 2026-01-01 --to 2026-06-01
+stderr '62'
+
+# Your own calendar allows a much longer range (the server cap is 1825 days; the
+# local cap leaves room for the one-day widening).
+exec teams calendar list --from 2026-01-01 --to 2030-12-25 --json --jq 'length > 0'
+stdout '^true$'

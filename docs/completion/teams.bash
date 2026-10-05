@@ -952,6 +952,229 @@ _teams_cache()
     noun_aliases=()
 }
 
+_teams_calendar_help()
+{
+    last_command="teams_calendar_help"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--jq=")
+    two_word_flags+=("--jq")
+    flags+=("--json")
+    flags+=("--no-color")
+    flags+=("--no-input")
+    flags+=("--profile=")
+    two_word_flags+=("--profile")
+    flags+=("--quiet")
+    flags+=("--read-only")
+    flags+=("--refresh")
+    flags+=("--verbose")
+    flags+=("-v")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    has_completion_function=1
+    noun_aliases=()
+}
+
+_teams_calendar_list()
+{
+    last_command="teams_calendar_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--chat")
+    local_nonpersistent_flags+=("--chat")
+    flags+=("--date=")
+    two_word_flags+=("--date")
+    local_nonpersistent_flags+=("--date")
+    local_nonpersistent_flags+=("--date=")
+    flags+=("--days=")
+    two_word_flags+=("--days")
+    local_nonpersistent_flags+=("--days")
+    local_nonpersistent_flags+=("--days=")
+    flags+=("--free-busy")
+    local_nonpersistent_flags+=("--free-busy")
+    flags+=("--from=")
+    two_word_flags+=("--from")
+    local_nonpersistent_flags+=("--from")
+    local_nonpersistent_flags+=("--from=")
+    flags+=("--help")
+    flags+=("-h")
+    local_nonpersistent_flags+=("--help")
+    local_nonpersistent_flags+=("-h")
+    flags+=("--include-cancelled")
+    local_nonpersistent_flags+=("--include-cancelled")
+    flags+=("--limit=")
+    two_word_flags+=("--limit")
+    local_nonpersistent_flags+=("--limit")
+    local_nonpersistent_flags+=("--limit=")
+    flags+=("--to=")
+    two_word_flags+=("--to")
+    local_nonpersistent_flags+=("--to")
+    local_nonpersistent_flags+=("--to=")
+    flags+=("--tz=")
+    two_word_flags+=("--tz")
+    local_nonpersistent_flags+=("--tz")
+    local_nonpersistent_flags+=("--tz=")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    local_nonpersistent_flags+=("--user")
+    local_nonpersistent_flags+=("--user=")
+    flags+=("--jq=")
+    two_word_flags+=("--jq")
+    flags+=("--json")
+    flags+=("--no-color")
+    flags+=("--no-input")
+    flags+=("--profile=")
+    two_word_flags+=("--profile")
+    flags+=("--quiet")
+    flags+=("--read-only")
+    flags+=("--refresh")
+    flags+=("--verbose")
+    flags+=("-v")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_teams_calendar_search()
+{
+    last_command="teams_calendar_search"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--help")
+    flags+=("-h")
+    local_nonpersistent_flags+=("--help")
+    local_nonpersistent_flags+=("-h")
+    flags+=("--limit=")
+    two_word_flags+=("--limit")
+    local_nonpersistent_flags+=("--limit")
+    local_nonpersistent_flags+=("--limit=")
+    flags+=("--jq=")
+    two_word_flags+=("--jq")
+    flags+=("--json")
+    flags+=("--no-color")
+    flags+=("--no-input")
+    flags+=("--profile=")
+    two_word_flags+=("--profile")
+    flags+=("--quiet")
+    flags+=("--read-only")
+    flags+=("--refresh")
+    flags+=("--verbose")
+    flags+=("-v")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_teams_calendar_show()
+{
+    last_command="teams_calendar_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--help")
+    flags+=("-h")
+    local_nonpersistent_flags+=("--help")
+    local_nonpersistent_flags+=("-h")
+    flags+=("--jq=")
+    two_word_flags+=("--jq")
+    flags+=("--json")
+    flags+=("--no-color")
+    flags+=("--no-input")
+    flags+=("--profile=")
+    two_word_flags+=("--profile")
+    flags+=("--quiet")
+    flags+=("--read-only")
+    flags+=("--refresh")
+    flags+=("--verbose")
+    flags+=("-v")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_teams_calendar()
+{
+    last_command="teams_calendar"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("help")
+    commands+=("list")
+    commands+=("search")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--help")
+    flags+=("-h")
+    local_nonpersistent_flags+=("--help")
+    local_nonpersistent_flags+=("-h")
+    flags+=("--jq=")
+    two_word_flags+=("--jq")
+    flags+=("--json")
+    flags+=("--no-color")
+    flags+=("--no-input")
+    flags+=("--profile=")
+    two_word_flags+=("--profile")
+    flags+=("--quiet")
+    flags+=("--read-only")
+    flags+=("--refresh")
+    flags+=("--verbose")
+    flags+=("-v")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
 _teams_channel_files()
 {
     last_command="teams_channel_files"
@@ -3089,6 +3312,7 @@ _teams_root_command()
     commands+=("api")
     commands+=("auth")
     commands+=("cache")
+    commands+=("calendar")
     commands+=("channel")
     commands+=("chat")
     commands+=("config")

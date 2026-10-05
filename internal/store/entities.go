@@ -40,6 +40,10 @@ const (
 	KindPerson = "person"
 	// KindPersonChat marks a person key → 1:1 chat id entry.
 	KindPersonChat = "person_chat"
+	// KindEvent marks a short event handle → full event id entry, which is how
+	// `teams calendar show <handle>` finds a 152-character Graph event id
+	// (plans/calendar.md §4.6).
+	KindEvent = "event"
 )
 
 // TTLs from PLAN.md:170: "a TTL of about 1h for names and 7 days for person →
@@ -54,13 +58,22 @@ const (
 	// mapping stays usable. People and their 1:1 chats change far less often
 	// than channel names, so the plan allows a week.
 	PersonTTL = 7 * 24 * time.Hour
+
+	// EventTTL is how long an event handle stays resolvable. It matches
+	// PersonTTL: a handle is printed to be pasted into a later command, which
+	// may be days later, and a stale handle costs one `calendar list`
+	// (plans/calendar.md §4.6).
+	EventTTL = PersonTTL
 )
 
 // entityCacheVersion is the schema version stamped into entities.json. A file
 // with any other version is treated exactly like a corrupt one: the cache is
 // rebuildable, so a mismatch costs one round of name resolution and never a
 // fatal error.
-const entityCacheVersion = 1
+//
+// Version 2 added the event handle table (plans/calendar.md §4.6). Bumping it
+// is safe by design: a version mismatch just rebuilds.
+const entityCacheVersion = 2
 
 // ErrCorruptCache reports an entity cache file that could not be used: invalid
 // JSON or an unknown schema version. LoadEntities never fails because of it -
@@ -87,7 +100,8 @@ type Person struct {
 type Entry struct {
 	// Key is the normalized key a lookup uses, not the typed spelling.
 	Key string
-	// Kind is one of KindTeam, KindChannel, KindPerson, KindPersonChat.
+	// Kind is one of KindTeam, KindChannel, KindPerson, KindPersonChat,
+	// KindEvent.
 	Kind string
 	// Value is the resolved id: a team, channel, user or chat id.
 	Value string
@@ -126,6 +140,7 @@ type EntityCache struct {
 	channels map[string]entityRecord
 	people   map[string]personRecord
 	chats    map[string]entityRecord
+	events   map[string]entityRecord
 
 	// dirty records a change since the last Save, so a read-only command never
 	// rewrites the file (PLAN.md:260: `cache info` makes no network calls and
@@ -170,6 +185,8 @@ type entityCacheFile struct {
 	People map[string]personRecord `json:"people,omitempty"`
 	// Chats maps a normalized person key to the id of the 1:1 chat with them.
 	Chats map[string]entityRecord `json:"person_chats,omitempty"`
+	// Events maps a short event handle to the full Graph event id.
+	Events map[string]entityRecord `json:"events,omitempty"`
 }
 
 // defaultClock is the default for the injected clock and the only place this
@@ -187,6 +204,7 @@ func newEntityCache() *EntityCache {
 		channels: map[string]entityRecord{},
 		people:   map[string]personRecord{},
 		chats:    map[string]entityRecord{},
+		events:   map[string]entityRecord{},
 	}
 }
 
@@ -237,6 +255,11 @@ func LoadEntities(path string) (*EntityCache, error) {
 	for key, rec := range file.Chats {
 		if normalized := normalizePersonKey(key); normalized != "" && rec.ID != "" {
 			c.chats[normalized] = rec
+		}
+	}
+	for key, rec := range file.Events {
+		if normalized := normalizeEventHandle(key); normalized != "" && rec.ID != "" {
+			c.events[normalized] = rec
 		}
 	}
 	return c, nil
@@ -296,6 +319,7 @@ func (c *EntityCache) Save(path string) error {
 		Channels: c.channels,
 		People:   c.people,
 		Chats:    c.chats,
+		Events:   c.events,
 	}
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
@@ -433,9 +457,54 @@ func (c *EntityCache) PutPersonChat(key, chatID string) {
 	c.dirty = true
 }
 
+// Event returns the full event id cached for a short handle. A handle is
+// lower-case hexadecimal, so the lookup is case-insensitive in practice
+// (plans/calendar.md §4.6).
+func (c *EntityCache) Event(handle string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	rec, ok := c.events[normalizeEventHandle(handle)]
+	if !ok || rec.ID == "" {
+		return "", false
+	}
+	return rec.ID, true
+}
+
+// PutEvent stores the full event id behind a short handle. An empty handle or
+// id is ignored.
+func (c *EntityCache) PutEvent(handle, id string) {
+	normalized := normalizeEventHandle(handle)
+	if c == nil || normalized == "" || id == "" {
+		return
+	}
+	c.events[normalized] = entityRecord{ID: id, Input: strings.TrimSpace(handle), At: c.stamp()}
+	c.dirty = true
+}
+
+// EventHandles returns every cached handle, which `calendar list` needs to
+// lengthen a handle whose 7-character prefix another event shares
+// (plans/calendar.md §4.6).
+func (c *EntityCache) EventHandles() []string {
+	if c == nil {
+		return nil
+	}
+	out := make([]string, 0, len(c.events))
+	for handle := range c.events {
+		out = append(out, handle)
+	}
+	return out
+}
+
+// normalizeEventHandle prepares a handle for a lookup: handles are lower-case
+// hexadecimal, so the value is only trimmed and lower-cased.
+func normalizeEventHandle(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
 // ForEach calls fn for every entry, ordered by kind (teams, channels, people,
-// person chats) and then by key, so `cache info` counts and tests see a stable
-// order. It exists because a cache has no meaningful len() of its own, and it
+// person chats, events) and then by key, so `cache info` counts and tests see a
+// stable order. It exists because a cache has no meaningful len() of its own, and it
 // reports every stored entry - including ones past their TTL - because it takes
 // no clock.
 func (c *EntityCache) ForEach(fn func(key string, entry Entry)) {
@@ -462,6 +531,9 @@ func (c *EntityCache) snapshot() []Entry {
 	for key, rec := range c.chats {
 		out = append(out, Entry{Key: key, Kind: KindPersonChat, Value: rec.ID, Name: rec.Input, At: rec.At})
 	}
+	for key, rec := range c.events {
+		out = append(out, Entry{Key: key, Kind: KindEvent, Value: rec.ID, Name: rec.Input, At: rec.At})
+	}
 	sort.Slice(out, func(i, j int) bool {
 		ri, rj := kindRank(out[i].Kind), kindRank(out[j].Kind)
 		if ri != rj {
@@ -483,14 +555,16 @@ func kindRank(kind string) int {
 		return 2
 	case KindPersonChat:
 		return 3
-	default:
+	case KindEvent:
 		return 4
+	default:
+		return 5
 	}
 }
 
 // count returns how many entries are stored, expired or not.
 func (c *EntityCache) count() int {
-	return len(c.teams) + len(c.channels) + len(c.people) + len(c.chats)
+	return len(c.teams) + len(c.channels) + len(c.people) + len(c.chats) + len(c.events)
 }
 
 // Prune drops the entries whose TTL ran out at now and reports how many went
@@ -528,6 +602,12 @@ func (c *EntityCache) Prune(now time.Time) int {
 			gone++
 		}
 	}
+	for key, rec := range c.events {
+		if expired(rec.At, EventTTL, now) {
+			delete(c.events, key)
+			gone++
+		}
+	}
 	if gone > 0 {
 		c.dirty = true
 	}
@@ -555,6 +635,7 @@ func (c *EntityCache) Clear() {
 	c.channels = nil
 	c.people = nil
 	c.chats = nil
+	c.events = nil
 	c.dirty = true
 }
 
@@ -587,6 +668,9 @@ func (c *EntityCache) Stats(now time.Time) CacheStats {
 	}
 	for _, rec := range c.chats {
 		count(rec.At, PersonTTL)
+	}
+	for _, rec := range c.events {
+		count(rec.At, EventTTL)
 	}
 	return stats
 }

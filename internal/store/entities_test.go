@@ -286,7 +286,7 @@ func TestEntityCacheTTL(t *testing.T) {
 
 func TestEntityCachePruneTreatsAnUndatedEntryAsStale(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "entities.json")
-	if err := WriteFile(path, []byte("{\n  \"version\": 1,\n  \"teams\": {\"engineering\": {\"id\": \"team-eng\", \"at\": \"0001-01-01T00:00:00Z\"}}\n}\n")); err != nil {
+	if err := WriteFile(path, []byte("{\n  \"version\": 2,\n  \"teams\": {\"engineering\": {\"id\": \"team-eng\", \"at\": \"0001-01-01T00:00:00Z\"}}\n}\n")); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadEntities(path)
@@ -434,7 +434,7 @@ func TestEntityCacheReportsReadErrors(t *testing.T) {
 
 func TestEntityCacheSkipsUnusableRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "entities.json")
-	if err := WriteFile(path, []byte("{\n  \"version\": 1,\n  \"teams\": {\n    \"\": {\"id\": \"team-empty-key\"},\n    \"Undated\": {\"id\": \"\"},\n    \"Engineering\": {\"id\": \"team-eng\", \"input\": \"Engineering\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \" payments \": {\"id\": \"team-pay\", \"at\": \"2026-02-01T12:00:00Z\"}\n  },\n  \"channels\": {\n    \"team-eng/general\": {\"id\": \"chan-general\", \"input\": \"General\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \"no-separator\": {\"id\": \"chan-nope\"},\n    \"team-eng/\": {\"id\": \"chan-nope\"},\n    \"team-eng/empty\": {\"id\": \"\"}\n  },\n  \"people\": {\n    \"\": {\"id\": \"user-empty-key\"},\n    \"nobody\": {\"id\": \"\"},\n    \"@yuki\": {\"id\": \"user-yuki\", \"input\": \"@Yuki\", \"display_name\": \"Yuki Tanaka\", \"mail\": \"yuki@colorkrew.com\", \"at\": \"2026-02-01T12:00:00Z\"}\n  },\n  \"person_chats\": {\n    \"yuki\": {\"id\": \"chat-yuki\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \"\": {\"id\": \"chat-empty-key\"}\n  }\n}\n")); err != nil {
+	if err := WriteFile(path, []byte("{\n  \"version\": 2,\n  \"teams\": {\n    \"\": {\"id\": \"team-empty-key\"},\n    \"Undated\": {\"id\": \"\"},\n    \"Engineering\": {\"id\": \"team-eng\", \"input\": \"Engineering\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \" payments \": {\"id\": \"team-pay\", \"at\": \"2026-02-01T12:00:00Z\"}\n  },\n  \"channels\": {\n    \"team-eng/general\": {\"id\": \"chan-general\", \"input\": \"General\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \"no-separator\": {\"id\": \"chan-nope\"},\n    \"team-eng/\": {\"id\": \"chan-nope\"},\n    \"team-eng/empty\": {\"id\": \"\"}\n  },\n  \"people\": {\n    \"\": {\"id\": \"user-empty-key\"},\n    \"nobody\": {\"id\": \"\"},\n    \"@yuki\": {\"id\": \"user-yuki\", \"input\": \"@Yuki\", \"display_name\": \"Yuki Tanaka\", \"mail\": \"yuki@colorkrew.com\", \"at\": \"2026-02-01T12:00:00Z\"}\n  },\n  \"person_chats\": {\n    \"yuki\": {\"id\": \"chat-yuki\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \"\": {\"id\": \"chat-empty-key\"}\n  },\n  \"events\": {\n    \"a1b2c3d\": {\"id\": \"AAMkADevent==\", \"input\": \"a1b2c3d\", \"at\": \"2026-02-01T12:00:00Z\"},\n    \"\": {\"id\": \"event-empty-key\"},\n    \"deadbeef\": {\"id\": \"\"}\n  }\n}\n")); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadEntities(path)
@@ -471,9 +471,10 @@ func TestEntityCacheSkipsUnusableRecords(t *testing.T) {
 	if _, ok := c.Person(""); ok {
 		t.Error("a person record without a key was kept")
 	}
-	// Two teams, one channel, one person and one person chat are usable.
-	if got := c.Stats(fixedNow).Entries; got != 5 {
-		t.Errorf("Stats.entries = %d, want the 5 usable records", got)
+	// Two teams, one channel, one person, one person chat and one event handle
+	// are usable.
+	if got := c.Stats(fixedNow).Entries; got != 6 {
+		t.Errorf("Stats.entries = %d, want the 6 usable records", got)
 	}
 }
 
@@ -513,8 +514,8 @@ func TestEntityCacheSaveIsPrivateVersionedAndStable(t *testing.T) {
 	if err := json.Unmarshal(one, &file); err != nil {
 		t.Fatalf("the cache is not valid JSON: %v", err)
 	}
-	if version, ok := file["version"].(float64); !ok || version != 1 {
-		t.Errorf("version = %v, want 1", file["version"])
+	if version, ok := file["version"].(float64); !ok || version != 2 {
+		t.Errorf("version = %v, want 2", file["version"])
 	}
 	teams, ok := file["teams"].(map[string]any)
 	if !ok || len(teams) != 2 {

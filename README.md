@@ -89,12 +89,33 @@ The token cache is encrypted and stays local; see
 | `teams unread [--chats --mentions] [--since]` | What is waiting for you |
 | `teams user search <q>` · `teams user show <person>` | People in your directory |
 | `teams channel files <channel>` · `teams file download <message> [-o dir]` | A channel's files, and a message's attachments |
+| `teams calendar list [--user <who> --date <day> --days N --from/--to --tz --free-busy --chat --include-cancelled]` | Meetings for a day or a range, yours or a colleague's |
+| `teams calendar show <event>` · `teams calendar search <query>` | One event in full, and a search over your primary calendar |
 | `teams alias set\|list\|rm` | Names you can use anywhere a reference is |
 
 `teams search` takes the documented KQL scope terms both as flags and inline in
 the query, so `teams search 'from:bob deploy sent>=2026-10-01'` works. Hits carry
 no message body — Graph does not return one — so pipe the `webUrl` into
 `teams thread read` when you want the text.
+
+```bash
+teams calendar list                                # today
+teams calendar list --date tomorrow --tz Asia/Tokyo
+teams calendar list --from mon --to fri            # weekdays read naturally
+teams calendar list --user bob@example.com          # full details if shared
+teams calendar list --user bob@example.com --free-busy
+teams calendar list --chat                         # resolve each meeting's chat
+teams calendar show a1b2c3d                        # a handle from the listing
+teams calendar search standup
+```
+
+Days are **local**: a day runs midnight to midnight in `--tz`, or in this
+machine's zone without it. All-day events are floating, so they are matched by
+date and never shifted by a timezone conversion. The `ID` column is a 7-character
+handle for Graph's 152-character event id; `show` accepts the handle, the full id,
+or an Outlook web link. A colleague's calendar is shown in full when it is shared
+with you; otherwise the command falls back to free/busy (times and status only)
+and says so on stderr.
 
 ## Writing
 
@@ -290,6 +311,22 @@ immediately, names the scope, and exits 3 — it does not call Graph first.
 because an admin has to consent to it. On a terminal the CLI offers to sign in
 again with that scope; anywhere else it exits 3 with the admin request.
 
+The **calendar** commands work the same way, because a calendar scope in a preset
+would make every existing login ask for it (which triggers `AADSTS65001`):
+
+| Command | Scope |
+|---|---|
+| `teams calendar list` (your own), `show`, `search` | `Calendars.Read` |
+| `teams calendar list --user <colleague>` | `Calendars.Read.Shared` |
+| `teams calendar list --chat`, `show` (chat lookup) | `OnlineMeetings.Read` |
+
+None of them needs admin consent by the docs, but a production tenant may still
+block user consent, in which case the error's hint says so and
+`teams auth status --admin-request` prints the ticket. Listing a colleague by
+**address** needs nothing beyond the calendar scopes; naming them by display name
+additionally resolves through the directory, which needs `User.ReadBasic.All` or
+`People.Read`.
+
 ## Where your data lives
 
 | Kind | Where | Removed by |
@@ -357,17 +394,21 @@ else is refused.
 
 ## Status
 
-Reading, writing and the polish work are done: the binary is what this README
-describes, and this documentation is also published at
+**`v1.0.0` has shipped**, and this branch adds the calendar reads (`teams calendar
+list`, `show`, `search`) on top of it; the calendar writes (`create`, `update`,
+`accept`, `tentative`, `decline`, `cancel`, `delete`) land next. The binary is what
+this README describes, and this documentation is also published at
 **<https://floriscornel.github.io/teams-cli/>** (generated from the repository).
-The first tagged release, `v1.0.0`, is the maintainer's next step.
 
-After that, in order:
+In order from here:
 
-1. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
+1. **Calendar writes** — `create`, `update`, the four responses, `cancel` and
+   `delete`, behind `Calendars.ReadWrite`. They notify attendees, so they ask for
+   confirmation and support `--dry-run`.
+2. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
    OpenAI-compatible or Azure/Foundry provider, conversation history and curated
    memory. Opt-in, off by default.
-2. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
+3. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
    and a CI guide, for unattended runners.
 
 [PLAN.md](PLAN.md) is the full design and the reasoning behind each decision.
