@@ -63,9 +63,6 @@ func TestClassifyCalendarViewError(t *testing.T) {
 			if notFound != nil && output.CodeOf(notFound) != output.CodeNotFound {
 				t.Errorf("the notFound error maps to exit %d, want 4", output.CodeOf(notFound))
 			}
-			if notFound != nil && output.CodeOf(notFound) != output.CodeNotFound {
-				t.Errorf("the notFound error maps to exit %d, want 4", output.CodeOf(notFound))
-			}
 		})
 	}
 }
@@ -78,8 +75,13 @@ func TestClassifyCalendarViewErrorNamesTheMailboxProblem(t *testing.T) {
 	if notFound == nil {
 		t.Fatal("no error for a mailbox that cannot serve the REST API")
 	}
-	if hint := output.HintOf(notFound); !strings.Contains(hint, "Exchange Online mailbox") {
-		t.Errorf("hint = %q, want it to name the missing mailbox", hint)
+	// The one-line message carries both halves of what the user needs: what is
+	// wrong and what it means for them.
+	msg := notFound.Error()
+	for _, want := range []string{"has no Exchange Online mailbox", "inactive", "on-premises", "cannot be read"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message = %q, want it to contain %q", msg, want)
+		}
 	}
 }
 
@@ -429,6 +431,12 @@ func TestCalendarChatScopeIsCheckedSeparately(t *testing.T) {
 
 // countGraphCalls points the harness at a server that counts requests and returns
 // the counter, so a test can prove a command stopped before any Graph call.
+// signedInAs gives the app the identity it would get from /me, for a test whose
+// injected scopes must fail the command before it touches the network.
+func (h *harness) signedInAs(me graph.Me) {
+	h.app.injectedUser = me
+}
+
 func (h *harness) countGraphCalls(t *testing.T) func() int {
 	t.Helper()
 	var mu sync.Mutex
@@ -493,5 +501,45 @@ func TestCalendarCreateTeamsNeedsATeamsMailbox(t *testing.T) {
 		if strings.HasPrefix(path, "POST /v1.0/me/calendar/events") {
 			t.Errorf("the create was sent despite the mailbox check: %v", paths)
 		}
+	}
+}
+
+// TestClassifyCalendarViewErrorMessagesAreReadable pins the wording a user sees
+// for a user they cannot read. The message used to be the whole *graph.APIError,
+// so the terminal got "graph: GET https://graph.microsoft.com/v1.0/users/…?%24select=…
+// HTTP 404: MailboxNotEnabledForRESTAPI: … (request-id …)" — the URL and the
+// request id belong in -v output, not on the main line.
+func TestClassifyCalendarViewErrorMessagesAreReadable(t *testing.T) {
+	cases := map[string]struct {
+		code     string
+		wantPart string
+	}{
+		"no mailbox": {"MailboxNotEnabledForRESTAPI", "has no Exchange Online mailbox"},
+		"no user":    {"ErrorInvalidUser", "no such user"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, notFound := classifyCalendarViewError(&graph.APIError{
+				Method:    "GET",
+				URL:       "https://graph.microsoft.com/v1.0/users/user-9/calendar/calendarView?%24select=id",
+				Status:    404,
+				Code:      tc.code,
+				Message:   "The mailbox is not enabled for the REST API.",
+				RequestID: "abc-123",
+			})
+			if notFound == nil {
+				t.Fatal("no error for a user that cannot be read")
+			}
+			msg := notFound.Error()
+			if strings.Contains(msg, "https://") {
+				t.Errorf("the message carries a URL: %q", msg)
+			}
+			if strings.Contains(msg, "request-id") || strings.Contains(msg, "abc-123") {
+				t.Errorf("the message carries a request id: %q", msg)
+			}
+			if !strings.Contains(msg, tc.wantPart) {
+				t.Errorf("message = %q, want it to contain %q", msg, tc.wantPart)
+			}
+		})
 	}
 }

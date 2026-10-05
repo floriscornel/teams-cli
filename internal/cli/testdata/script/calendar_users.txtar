@@ -57,9 +57,10 @@ stdout 'Bob review'
 # A user that cannot be read at all is exit 4 when it is the only one asked for:
 # nothing is left to print (plans/calendar.md §4.3, step 7).
 ! exec teams calendar list --user nobody@example.invalid
-stderr 'no calendar could be read'
+stderr 'no such user'
+! stderr 'https://'
 ! exec teams calendar list --user dave@example.com
-stderr 'Exchange Online mailbox'
+stderr 'has no Exchange Online mailbox'
 
 # --user me is still only your own calendar, and still needs no shared scope.
 exec teams calendar list --user me
