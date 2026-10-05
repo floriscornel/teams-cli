@@ -80,6 +80,13 @@ type Model struct {
 	// all-day events, a 62-day getSchedule window, a null scheduleItems plus a
 	// "5016" error, and the /users/{id}/calendarView access failures.
 	CalendarEvents []CalendarEvent
+	// StaleSearchHits are event ids the search index still returns but whose event
+	// no longer exists. The live service does exactly this — a deleted event stays
+	// in the index for a while — and it is the case that makes a hit unreadable,
+	// so a test can exercise the CLI's "N search hit(s) could not be read"
+	// warning. Each entry is `{ID, Subject}`: the subject is only used to decide
+	// whether the hit matches a query.
+	StaleSearchHits []StaleSearchHit
 	// CalendarAccess says how the signed-in user may see another user's
 	// calendar. The key is the owner's user id and the value is one of the
 	// [CalendarAccessNone], [CalendarAccessFreeBusy] or [CalendarAccessRead]
@@ -136,6 +143,15 @@ const (
 	// returns the events.
 	CalendarAccessRead = "read"
 )
+
+// StaleSearchHit is one search-index entry whose event no longer exists. See
+// [Model.StaleSearchHits].
+type StaleSearchHit struct {
+	// ID is the event id the index still holds, in the REST (URL-safe) spelling.
+	ID string
+	// Subject is what the index has for the hit, used to match a query.
+	Subject string
+}
 
 // Calendar event kinds, as [CalendarEvent.Kind] values.
 const (

@@ -26,7 +26,7 @@ stdout '^me$'
 exec teams calendar list --json --jq '.[0].source'
 stdout '^events$'
 exec teams calendar list --json --jq '[.[].status] | sort | join(",")'
-stdout '^busy,oof,tentative,tentative$'
+stdout '^busy,busy,oof,tentative,tentative$'
 exec teams calendar list --json --jq '.[0].handle | test("^[0-9a-f]{7}$")'
 stdout 'true'
 # All-day events come first within their day, and their JSON instants are the
@@ -45,16 +45,16 @@ stdout 'T09:30:00\+09:00$'
 # The handle is the first 7 hex characters of the SHA-256 of the event id, so it
 # is the same on every run and can be written down here.
 exec teams calendar list --json --jq '.[1].handle'
-stdout '^1d69044$'
+stdout '^f17aee0$'
 
 # The ID column is a handle that `show` accepts.
-exec teams calendar show 1d69044
+exec teams calendar show f17aee0
 stdout 'subject:.*Standup'
 stdout 'when:.*09:00–09:30'
 stdout 'teams meeting:.*yes'
 stdout 'join url:.*teams.microsoft.com'
 stdout 'chat:.*19:meeting_'
-stdout 'id:.*cal-standup'
+stdout 'id:.*AAMkAGNmZDBm'
 
 # A handle that was never cached is exit 4 with the fix.
 ! exec teams calendar show aaaaaaa
@@ -62,11 +62,11 @@ stderr 'no event is cached under the handle'
 stderr 'run `teams calendar list` first'
 
 # The full id works too, and an Outlook web link's ItemID is decoded.
-exec teams calendar show cal-standup
+exec teams calendar show 'AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAA='
 stdout 'subject:.*Standup'
-exec teams calendar show 'https://outlook.office.com/calendar/item/cal-review?ItemID=cal-review'
+exec teams calendar show 'https://outlook.office.com/calendar/item/x?ItemID=AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAB='
 stdout 'subject:.*Design review'
-! exec teams calendar show 'https://outlook.office.com/calendar/item/cal-review'
+! exec teams calendar show 'https://outlook.office.com/calendar/item/x'
 stderr 'without an ItemID parameter'
 
 # Tomorrow, and a one-day range: the Date column only appears for a range.
@@ -75,7 +75,7 @@ stdout 'Planning'
 ! stdout 'Standup'
 
 exec teams calendar list --from today --to today --json --jq 'length'
-stdout '^4$'
+stdout '^5$'
 
 # A range longer than one day grows a Date column.
 exec teams calendar list --date today --days 2
@@ -105,7 +105,7 @@ stderr 'showing first 1; use --all'
 exec teams calendar list --limit 1 --json --jq 'length'
 stdout '^1$'
 exec teams calendar list --all --json --jq 'length'
-stdout '^4$'
+stdout '^5$'
 
 # Bad day and time-zone values are usage errors.
 ! exec teams calendar list --date someday

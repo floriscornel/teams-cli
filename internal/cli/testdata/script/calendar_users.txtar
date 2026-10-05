@@ -52,7 +52,7 @@ stdout '^ID\tWHEN\tSUBJECT\tORGANIZER\tTEAMS'
 stdout 'Standup'
 # Your own schedule includes subjects, and no handle: a free/busy item is not
 # an event, so there is nothing for `show` to resolve.
-! stdout '1d69044'
+! stdout 'f17aee0'
 ! stdout '00:00–00:00'
 
 # --free-busy with two users keeps the User column and no free rows.

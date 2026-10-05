@@ -23,7 +23,7 @@ import (
 func writeCalendarModel() fakegraph.Model {
 	model := calendarModel()
 	model.CalendarEvents = append(model.CalendarEvents, fakegraph.CalendarEvent{
-		ID: "ev-invited", Subject: "Someone else's meeting",
+		ID: calInvited, Subject: "Someone else's meeting",
 		Start: calJan2.Add(15 * time.Hour), End: calJan2.Add(16 * time.Hour),
 		OrganizerName: "Bob Builder", IsOrganizer: false, AllowNewTimeProposals: boolPtr(false),
 	})
@@ -248,11 +248,11 @@ func TestUpdateEventUnknownID(t *testing.T) {
 
 func TestRespondEventAcceptsAndDeclines(t *testing.T) {
 	_, c := writeCalendarSetup(t)
-	// ev-invited is the one event the signed-in user does not organize.
-	if err := c.RespondEvent(context.Background(), "ev-invited", ResponseAccept, "looking forward", true, nil, "UTC"); err != nil {
+	// calInvited is the one event the signed-in user does not organize.
+	if err := c.RespondEvent(context.Background(), calInvited, ResponseAccept, "looking forward", true, nil, "UTC"); err != nil {
 		t.Fatalf("accept: %v", err)
 	}
-	ev, err := c.GetEvent(context.Background(), "ev-invited", "")
+	ev, err := c.GetEvent(context.Background(), calInvited, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,10 +261,10 @@ func TestRespondEventAcceptsAndDeclines(t *testing.T) {
 	}
 
 	// Declining moves the event to Deleted Items, so it leaves the calendar.
-	if err := c.RespondEvent(context.Background(), "ev-invited", ResponseDecline, "cannot make it", true, nil, "UTC"); err != nil {
+	if err := c.RespondEvent(context.Background(), calInvited, ResponseDecline, "cannot make it", true, nil, "UTC"); err != nil {
 		t.Fatalf("decline: %v", err)
 	}
-	if _, err := c.GetEvent(context.Background(), "ev-invited", ""); err == nil {
+	if _, err := c.GetEvent(context.Background(), calInvited, ""); err == nil {
 		t.Error("the declined event is still readable")
 	}
 }
@@ -290,7 +290,7 @@ func TestRespondEventProposedTimeRules(t *testing.T) {
 
 	// A proposed time with sendResponse:false is a 400 ErrorInvalidParameter
 	// (plans/calendar.md §3, F10).
-	err := c.RespondEvent(context.Background(), "ev-invited", ResponseTentative, "maybe", false, slot, "UTC")
+	err := c.RespondEvent(context.Background(), calInvited, ResponseTentative, "maybe", false, slot, "UTC")
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("proposed time with no response = %v, want an *APIError", err)
@@ -299,14 +299,14 @@ func TestRespondEventProposedTimeRules(t *testing.T) {
 		t.Errorf("got %d %s, want 400 ErrorInvalidParameter", apiErr.Status, apiErr.Code)
 	}
 	// With a response it works.
-	if err := c.RespondEvent(context.Background(), "ev-invited", ResponseTentative, "maybe", true, slot, "UTC"); err != nil {
+	if err := c.RespondEvent(context.Background(), calInvited, ResponseTentative, "maybe", true, slot, "UTC"); err != nil {
 		t.Fatalf("tentative with a proposed time: %v", err)
 	}
 }
 
 func TestRespondEventRejectsAnUnknownKind(t *testing.T) {
 	_, c := writeCalendarSetup(t)
-	if err := c.RespondEvent(context.Background(), "ev-invited", EventResponse("maybe"), "", true, nil, "UTC"); err == nil {
+	if err := c.RespondEvent(context.Background(), calInvited, EventResponse("maybe"), "", true, nil, "UTC"); err == nil {
 		t.Fatal("an unknown response kind was accepted")
 	}
 	if err := c.RespondEvent(context.Background(), "", ResponseAccept, "", true, nil, "UTC"); err == nil {
@@ -327,7 +327,7 @@ func TestCancelEventOrganizerOnly(t *testing.T) {
 		t.Error("isCancelled = false after a cancel")
 	}
 	// An attendee cannot cancel.
-	err = c.CancelEvent(context.Background(), "ev-invited", "")
+	err = c.CancelEvent(context.Background(), calInvited, "")
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("cancelling someone else's meeting = %v, want an *APIError", err)
@@ -386,7 +386,7 @@ func TestPreCheckEventReadsTheThreeFields(t *testing.T) {
 
 	// An event the user does not organize reports false, and this one refuses
 	// proposals.
-	other, err := c.PreCheckEvent(context.Background(), "ev-invited")
+	other, err := c.PreCheckEvent(context.Background(), calInvited)
 	if err != nil {
 		t.Fatal(err)
 	}

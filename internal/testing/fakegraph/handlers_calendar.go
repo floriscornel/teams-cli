@@ -1,7 +1,6 @@
 package fakegraph
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -315,6 +314,18 @@ func handleGetEvent(c *handlerCtx) {
 		if ev.id == id {
 			found = ev
 			break
+		}
+	}
+	if found == nil {
+		// A REST path carries the URL-safe spelling, which is how a search hitId
+		// arrives after the CLI converted it (plans/calendar.md §3, F8).
+		if rest := strings.NewReplacer("/", "-", "+", "_").Replace(id); rest != id {
+			for _, ev := range st.ownerEventsLocked(st.me) {
+				if ev.id == rest {
+					found = ev
+					break
+				}
+			}
 		}
 	}
 	if found == nil {
@@ -659,12 +670,20 @@ func MeetingThreadID(eventID string) string {
 	return "19:meeting_" + eventID + "@thread.v2"
 }
 
-// StandardBase64 encodes an event id the way the search service reports a hitId:
-// standard base64, so the result can contain "/" and "+". The CLI maps those two
-// characters back to the URL-safe alphabet to recover an id the REST endpoints
-// accept (plans/calendar.md §3, F8).
-func StandardBase64(id string) string {
-	return base64.StdEncoding.EncodeToString([]byte(id))
+// StandardBase64 encodes a REST event id the way the search service reports a
+// hitId: base64 in the STANDARD alphabet, so the result can contain "/" and "+".
+//
+// The id itself is not encoded — a Graph event id already is a base64 string —
+// so this is the identity for a REST id that has no "/" or "+" and a two-character
+// substitution for one that has. `internal/graph.EventIDFromHitID` performs the
+// reverse swap, which is the whole conversion (plans/calendar.md §3, F8).
+//
+// Modelling it faithfully matters: an earlier version of this helper
+// base64-encoded the id *string* while the CLI decoded it, so the two agreed with
+// each other and neither agreed with the service, and `calendar search` returned
+// nothing on a real tenant while every fake-backed test passed.
+func StandardBase64(restID string) string {
+	return strings.NewReplacer("-", "/", "_", "+").Replace(restID)
 }
 
 // oDataFilterLiteral extracts the single-quoted literal of "PROPERTY eq '…'".
@@ -753,20 +772,30 @@ func handleEventSearch(c *handlerCtx, req searchRequestWire) (handled bool) {
 		end = len(matches)
 	}
 	page := matches[from:end]
-	hits := make([]map[string]any, 0, len(page))
-	for _, ev := range page {
+	hits := make([]map[string]any, 0, len(page)+len(st.staleHits))
+	appendHit := func(id string) {
 		hits = append(hits, map[string]any{
 			// The hitId is the event's REST id in standard base64, which is the
 			// live service's form and the reason the CLI maps "/"→"-" and "+"→"_"
 			// to recover an id the REST endpoints accept (plans/calendar.md §3, F8).
-			"hitId":   StandardBase64(ev.id),
+			"hitId":   StandardBase64(id),
 			"rank":    1,
 			"summary": "",
 			"resource": map[string]any{
-				"start": dateTimeTimeZoneWire(ev.start.Format(graphDateFormat), "UTC"),
-				"end":   dateTimeTimeZoneWire(ev.end.Format(graphDateFormat), "UTC"),
+				"start": dateTimeTimeZoneWire("2026-01-02T00:00:00.0000000", "UTC"),
+				"end":   dateTimeTimeZoneWire("2026-01-02T00:30:00.0000000", "UTC"),
 			},
 		})
+	}
+	for _, ev := range page {
+		appendHit(ev.id)
+	}
+	// An index entry whose event is gone is still returned, which is what the live
+	// service does after a delete (Model.StaleSearchHits).
+	for _, stale := range st.staleHits {
+		if query == "" || strings.Contains(strings.ToLower(stale.Subject), query) {
+			appendHit(stale.ID)
+		}
 	}
 	c.json(http.StatusOK, map[string]any{
 		"value": []any{map[string]any{

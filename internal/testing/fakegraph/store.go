@@ -173,6 +173,9 @@ type store struct {
 	// calAccess says how the signed-in user may see another user's calendar
 	// (Model.CalendarAccess).
 	calAccess map[string]string
+	// staleHits are search-index entries whose event no longer exists
+	// (Model.StaleSearchHits).
+	staleHits []StaleSearchHit
 
 	// nextSeq orders messages across every container; it makes the default
 	// (deliberately unsorted) chat-message order and the search result order
@@ -228,6 +231,7 @@ func (s *store) seedLocked(m Model) {
 	for owner, access := range m.CalendarAccess {
 		s.calAccess[owner] = access
 	}
+	s.staleHits = append([]StaleSearchHit(nil), m.StaleSearchHits...)
 	if s.myDrive == "" {
 		s.myDrive = m.MyDriveID
 	}

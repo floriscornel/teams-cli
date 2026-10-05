@@ -304,6 +304,13 @@ func scriptsModel(now time.Time) fakegraph.Model {
 			},
 		}},
 		CalendarEvents: calendarScriptEvents(now),
+		// The search index keeps an entry for an event that is gone, which is what
+		// the live service does after a delete; calendar_search.txtar uses it to
+		// check that an unreadable hit warns instead of vanishing.
+		StaleSearchHits: []fakegraph.StaleSearchHit{{
+			ID:      "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAI=",
+			Subject: "Findable standup",
+		}},
 		// The calendar scripts list another user with each access level: Bob's
 		// calendar is shared in full, Yuki's as free/busy only, and Carol's is
 		// not shared at all (403 ErrorAccessDenied). Dave has no mailbox.
@@ -314,7 +321,12 @@ func scriptsModel(now time.Time) fakegraph.Model {
 	}
 }
 
-// calendarScriptEvents seeds the calendar events the scripts list. Every instant
+// calendarScriptEvents seeds the calendar events the scripts list.
+//
+// The ids are shaped like real Graph event ids (URL-safe base64 with "-", "_" and
+// a trailing "=") rather than plain words: the search conversion swaps the two
+// characters that distinguish the alphabets, and a fixture id without them would
+// pass through it unchanged and prove nothing. Every instant
 // is a fixed Tokyo wall clock time on the Tokyo day that is current when the
 // test starts, and the scripts pin TZ=Asia/Tokyo, so the rendered times are the
 // same whatever the wall clock says (scriptsModel takes a relative `now` for the
@@ -332,32 +344,32 @@ func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
 	}
 	return []fakegraph.CalendarEvent{
 		{
-			ID: "cal-standup", Subject: "Standup", Start: at(9, 0), End: at(9, 30),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAA=", Subject: "Standup", Start: at(9, 0), End: at(9, 30),
 			ShowAs: "busy", Teams: true, IsOrganizer: true, Location: "Teams",
 			JoinURL: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_standup%40thread.v2/0?context=%7b%22Tid%22%3a%22t%22%7d",
 		},
 		{
-			ID: "cal-review", Subject: "Design review", Start: at(14, 0), End: at(15, 0),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAB=", Subject: "Design review", Start: at(14, 0), End: at(15, 0),
 			ShowAs: "tentative", OrganizerName: "Bob Builder", Location: "Room 4",
 			Response: "tentativelyAccepted",
 		},
 		{
-			ID: "cal-holiday", Subject: "Company holiday", Kind: fakegraph.CalendarEventAllDay,
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAC=", Subject: "Company holiday", Kind: fakegraph.CalendarEventAllDay,
 			Start: at(0, 0), Days: 1, ShowAs: "oof", IsOrganizer: true,
 		},
 		{
-			ID: "cal-cancelled", Subject: "Cancelled sync", Start: at(16, 0), End: at(16, 30),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAD=", Subject: "Cancelled sync", Start: at(16, 0), End: at(16, 30),
 			IsCancelled: true, IsOrganizer: true,
 		},
 		{
 			// Yesterday in Tokyo, so it must not appear in a listing of today
 			// even though the server window is widened by a day.
-			ID: "cal-yesterday", Subject: "Yesterday standup", Start: at(9, 0).AddDate(0, 0, -1), End: at(9, 30).AddDate(0, 0, -1),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAE=", Subject: "Yesterday standup", Start: at(9, 0).AddDate(0, 0, -1), End: at(9, 30).AddDate(0, 0, -1),
 			ShowAs: "busy", IsOrganizer: true,
 		},
 		{
 			// Tomorrow in Tokyo, for the --date tomorrow assertion.
-			ID: "cal-tomorrow", Subject: "Planning", Start: at(11, 0).AddDate(0, 0, 1), End: at(12, 0).AddDate(0, 0, 1),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAF=", Subject: "Planning", Start: at(11, 0).AddDate(0, 0, 1), End: at(12, 0).AddDate(0, 0, 1),
 			ShowAs: "busy", OrganizerName: "Yuki Tanaka", IsOrganizer: true,
 		},
 		{
@@ -369,10 +381,18 @@ func calendarScriptEvents(now time.Time) []fakegraph.CalendarEvent {
 			Start: at(0, 0).AddDate(0, 0, -1), Days: 1, ShowAs: "busy", IsOrganizer: true,
 		},
 		{
+			// Two events sharing a word, so a search can match one that is still
+			// there and one that has been deleted: an indexed hit whose event can
+			// no longer be read is what calendar_search.txtar uses to check that a
+			// partial failure warns instead of vanishing.
+			ID:      "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAH=",
+			Subject: "Findable meeting", Start: at(17, 0), End: at(17, 30), ShowAs: "busy", IsOrganizer: true,
+		},
+		{
 			// An event the signed-in user was invited to, so the response
 			// pre-checks have something they are allowed to act on. It refuses
 			// proposed times, which `--propose` has to notice.
-			ID: "cal-invited", Subject: "Invited meeting", Start: at(15, 0), End: at(16, 0),
+			ID: "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAG=", Subject: "Invited meeting", Start: at(15, 0), End: at(16, 0),
 			ShowAs: "tentative", OrganizerName: "Bob Builder", IsOrganizer: false,
 			AllowNewTimeProposals: boolPtr(false),
 		},

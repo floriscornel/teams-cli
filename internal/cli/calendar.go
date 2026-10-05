@@ -1292,6 +1292,15 @@ func (a *App) runCalendarSearch(ctx context.Context, query string, flags listFla
 	limit := flags.limitOf(graph.DefaultTopSearch)
 	window := rangeWindow{loc: loc, zone: zoneName("")}
 	rows := make([]calendarRow, 0, calendarSearchPageSize)
+	// A hit is re-read to get the row the listing schema needs, and that read can
+	// fail — the id conversion was once wrong, and every hit failed silently, so
+	// the command printed an empty table. Failures are counted and reported
+	// (plans/calendar.md §4.4).
+	var (
+		seen     int
+		unread   int
+		firstErr error
+	)
 	for from := 0; ; from += calendarSearchPageSize {
 		page, err := client.SearchEvents(ctx, query, from, calendarSearchPageSize)
 		if err != nil {
@@ -1301,10 +1310,16 @@ func (a *App) runCalendarSearch(ctx context.Context, query string, flags listFla
 			if limit > 0 && len(rows) >= limit {
 				break
 			}
+			seen++
 			// A hit carries no times, so the event is read back to get the row
 			// the listing schema needs (plans/calendar.md §4.4).
 			ev, err := client.GetEvent(ctx, hit.HitID, calendarViewSelect)
 			if err != nil {
+				unread++
+				if firstErr == nil {
+					firstErr = err
+				}
+				// Debugf carries the detail, so -v explains each one.
 				a.Printer.Debugf("search hit %s could not be read: %v", hit.HitID, err)
 				continue
 			}
@@ -1320,6 +1335,14 @@ func (a *App) runCalendarSearch(ctx context.Context, query string, flags listFla
 		if len(page.Hits) == 0 {
 			break
 		}
+	}
+	// Every hit failing is a failure, not an empty calendar: an empty table would
+	// claim the query matched nothing.
+	if seen > 0 && unread == seen {
+		return output.Errorf("none of the %d search hit(s) could be read: %v", seen, firstErr)
+	}
+	if unread > 0 {
+		a.Printer.Warnf("%d search hit(s) could not be read", unread)
 	}
 	a.assignHandles(rows)
 	a.saveEntityCache()

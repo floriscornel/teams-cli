@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -578,12 +577,17 @@ func (c *Client) SearchEvents(ctx context.Context, query string, from, size int)
 // EventIDFromHitID converts a search hitId into the event id the REST endpoints
 // accept.
 //
-// A search hitId is the event id in STANDARD base64 — encoded, not merely in the
-// other alphabet, so only an encoded value is converted — while the REST path
-// takes the URL-safe alphabet, where "/" and "+" are illegal. Mapping those two
-// characters is the whole conversion. This is observed behaviour, not
-// documented: it was verified live on 2026-10-05 (handoff §3, F8), and it is the
-// only reason a search hit can be passed to `teams calendar show`.
+// The two differ only in the base64 alphabet: the search service reports the id
+// in the standard alphabet, where "/" and "+" are illegal in a URL path, and the
+// REST endpoints are addressed with the URL-safe alphabet. So the conversion is
+// exactly two character substitutions — the value is NOT base64-decoded, because
+// the id *is* the encoded string.
+//
+// This is observed behaviour, not documented: it was verified live on 2026-10-05
+// (handoff §3, F8). Getting it wrong is quiet rather than loud — a decoded id
+// becomes a URL with NUL bytes in it, Graph answers 400, and every hit is
+// dropped — which is why the live run of a real tenant found it and the fake,
+// which encoded the id the same wrong way, did not.
 //
 // The bool reports whether the value is usable as an event id at all: an empty
 // hitId is not.
@@ -592,21 +596,13 @@ func EventIDFromHitID(hitID string) (string, bool) {
 	if s == "" {
 		return "", false
 	}
-	// A standard-base64 payload is recognised by its own characters: the two
-	// that are illegal in a REST path ("/" and "+"), or "=" padding. An
-	// already URL-safe id has neither and is left exactly as it came.
-	if !strings.ContainsAny(s, "/+=") {
+	// A hitId in standard base64 can contain "/" or "+" (both illegal in a path
+	// segment); the URL-safe alphabet replaces them with "-" and "_". "=" padding
+	// is legal in a path segment and is left alone.
+	if !strings.ContainsAny(s, "/+") {
 		return s, true
 	}
-	decoded, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		decoded, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(s, "="))
-	}
-	if err != nil {
-		// Not base64 after all: the value itself is the id.
-		return s, true
-	}
-	return string(decoded), true
+	return strings.NewReplacer("/", "-", "+", "_").Replace(s), true
 }
 
 // AllowedOnlineMeetingProviders returns the mailbox's

@@ -29,10 +29,15 @@ const (
 	calCarol = "u-carol"
 	calDave  = "u-dave"
 
-	calStandup       = "ev-standup"
-	calHoliday       = "ev-holiday"
-	calAliceOneOnOne = "ev-alice-1on1"
-	calBobBusy       = "ev-bob-busy"
+	// The ids look like real Graph event ids: the URL-safe base64 alphabet, with
+	// "-" and "_" and a trailing "=", which is what makes the search conversion
+	// meaningful. A fixture id built from plain words passes through
+	// EventIDFromHitID unchanged and proves nothing about the swap.
+	calStandup       = "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAA="
+	calHoliday       = "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAB="
+	calAliceOneOnOne = "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAC="
+	calBobBusy       = "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAD="
+	calInvited       = "AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAE="
 
 	calJoinURL = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%3a%22x%22%7d"
 )
@@ -559,23 +564,21 @@ func TestFindMeetingChatIDNoMatchIsNotAnError(t *testing.T) {
 // ---- search -----------------------------------------------------------------
 
 func TestEventIDFromHitID(t *testing.T) {
-	// The live hitIds are standard base64 of the event id, so they can contain
-	// "/" and "+"; the fake produces the same form (fakegraph.StandardBase64).
-	// Most real ids contain neither, which is exactly why the conversion must
-	// leave an id that has no such character alone.
-	restID := "AAMkADEwODY2NzllLTQ3MmEtNGRlMC05ZTUyLTE4ZDRhYmU1ZGM3NABGAAAAAAA3+iYQBnJnQabRVDelNhnzBwAejhWkAOAxQ6M4c1c9NwfrAAAAAAENAAAejhWkAOAxQ6M4c1c9NwfrAABbUZLJAAA="
-	standard := fakegraph.StandardBase64(restID)
-	got, ok := EventIDFromHitID(standard)
-	if !ok {
-		t.Fatal("EventIDFromHitID rejected a standard-base64 id")
+	// A literal pair, not a round trip through the fake: the fake used to encode
+	// the id the same way this function decoded it, so the two agreed with each
+	// other and neither matched the service, and every live search returned
+	// nothing. The only assertion that can catch that is one with both spellings
+	// written out.
+	if got, ok := EventIDFromHitID("AAMk/q0B+Rk4AAA="); !ok || got != "AAMk-q0B_Rk4AAA=" {
+		t.Errorf("EventIDFromHitID = (%q, %v), want AAMk-q0B_Rk4AAA=", got, ok)
 	}
-	if got != restID {
-		t.Errorf("EventIDFromHitID = %q, want %q", got, restID)
+	// A hitId with no "/" or "+" is already URL-safe and passes through untouched.
+	if got, ok := EventIDFromHitID("AAMk-q0B_Rk4AAA="); !ok || got != "AAMk-q0B_Rk4AAA=" {
+		t.Errorf("a URL-safe hitId = (%q, %v), want it unchanged", got, ok)
 	}
-	// An already URL-safe value is not the standard encoding, so it is left
-	// alone rather than decoded into nonsense.
-	if got, ok := EventIDFromHitID("AAM-k-abc_123"); !ok || got != "AAM-k-abc_123" {
-		t.Errorf("URL-safe id = (%q, %v), want it unchanged", got, ok)
+	// The "=" padding is legal in a path segment and is never rewritten.
+	if got, ok := EventIDFromHitID("AAMk/q0B+Rk4AAA=="); !ok || got != "AAMk-q0B_Rk4AAA==" {
+		t.Errorf("padding was not preserved: %q", got)
 	}
 	if _, ok := EventIDFromHitID(""); ok {
 		t.Error("an empty hitId was accepted")
@@ -583,9 +586,22 @@ func TestEventIDFromHitID(t *testing.T) {
 	if _, ok := EventIDFromHitID("   "); ok {
 		t.Error("a blank hitId was accepted")
 	}
-	// A value that only looks encoded is returned unchanged.
-	if got, ok := EventIDFromHitID("not/base64/@@@"); !ok || got != "not/base64/@@@" {
-		t.Errorf("non-base64 value = (%q, %v), want it unchanged", got, ok)
+}
+
+// TestEventIDFromHitIDIsNotADecode pins the failure mode: decoding a hitId
+// produced a string with NUL bytes in it, which Graph answered 400 to, so every
+// hit was dropped. The conversion must not touch anything but the two characters.
+func TestEventIDFromHitIDIsNotADecode(t *testing.T) {
+	const hitID = "AAMk/q0B+Rk4AAA="
+	got, ok := EventIDFromHitID(hitID)
+	if !ok {
+		t.Fatal("a valid hitId was rejected")
+	}
+	if strings.ContainsRune(got, 0) {
+		t.Fatalf("EventIDFromHitID decoded the hitId into raw bytes: %q", got)
+	}
+	if len(got) != len(hitID) {
+		t.Errorf("the length changed from %d to %d; a character swap preserves it", len(hitID), len(got))
 	}
 }
 
@@ -598,16 +614,16 @@ func TestSearchEventsConvertsHitIDs(t *testing.T) {
 	if len(res.Hits) == 0 {
 		t.Fatal("no hits for an event that exists")
 	}
-	// The search service reports the event id in standard base64; the wrapper
-	// hands back the id the REST endpoints accept, so it must equal the seeded
-	// event id verbatim (plans/calendar.md §3, F8).
+	// The wrapper hands back an id the REST endpoints accept, so each hit must be
+	// readable: that is the property the live tenant exercised and the fake did
+	// not, because it was encoding the id the same wrong way the CLI decoded it.
 	var sawRestID bool
 	for _, hit := range res.Hits {
 		if hit.HitID == calStandup {
 			sawRestID = true
 		}
-		if id, ok := EventIDFromHitID(fakegraph.StandardBase64(hit.HitID)); !ok || id != hit.HitID {
-			t.Errorf("hitId %q does not round-trip through the search encoding", hit.HitID)
+		if _, err := c.GetEvent(context.Background(), hit.HitID, ""); err != nil {
+			t.Errorf("search hit %q is not a usable event id: %v", hit.HitID, err)
 		}
 	}
 	if !sawRestID {
