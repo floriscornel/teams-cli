@@ -1,0 +1,110 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-calendar-list - List meetings for a day or a range
+
+
+.SH SYNOPSIS
+\fBteams calendar list [--user ]… [--date ] [--days N] [--from  --to ] [flags]\fP
+
+
+.SH DESCRIPTION
+List your meetings, or a colleague's, for one day or a date range.
+
+.PP
+Days are local (--tz, or this machine's zone). Another user's calendar is
+shown in full when it is shared with you; otherwise the command falls back to
+free/busy, which shows only times and status (--free-busy asks for that
+directly). The ID column is a short handle for the full event id, usable with
+\fBteams calendar show\fR\&.
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	show every row instead of --limit
+
+.PP
+\fB--chat\fP[=false]
+	resolve each Teams meeting's chat and add a Chat column
+
+.PP
+\fB--date\fP="today"
+	the day to show: today, tomorrow, yesterday, YYYY-MM-DD, +Nd, -Nd or a weekday name
+
+.PP
+\fB--days\fP=1
+	how many days to show from --date
+
+.PP
+\fB--free-busy\fP[=false]
+	show free/busy only, even for your own shared calendars
+
+.PP
+\fB--from\fP=""
+	first day of a range (inclusive); must be paired with --to
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for list
+
+.PP
+\fB--include-cancelled\fP[=false]
+	also show events that were cancelled
+
+.PP
+\fB--limit\fP=200
+	maximum number of rows
+
+.PP
+\fB--to\fP=""
+	last day of a range (inclusive); must be paired with --from
+
+.PP
+\fB--tz\fP=""
+	IANA time zone for the days and times (default: this machine's)
+
+.PP
+\fB--user\fP=[]
+	a colleague whose calendar to include (repeatable, comma-separated; default: you)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-calendar(1)\fP

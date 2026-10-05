@@ -112,6 +112,29 @@ var documentedQueryOptions = map[string][]string{
 	"POST /drives/{drive-id}/items/{driveItem-id}/createUploadSession": {},
 	"POST /drives/{drive-id}/items/{driveItem-id}/createLink":          {},
 	"GET /me/drive": {"$select"},
+
+	// Calendar (PLAN.md Phase 6; refs/INDEX.md "Calendar"). calendarView takes
+	// the two required window parameters plus $top, $select, $orderby and
+	// $filter — $orderby=start/dateTime and $filter=isAllDay eq true both worked
+	// live (plans/calendar.md §3, F2); the CLI sorts client-side anyway.
+	"GET /me/calendarView":                       {"startDateTime", "endDateTime", "$top", "$select", "$orderby", "$filter"},
+	"GET /users/{user-id}/calendar/calendarView": {"startDateTime", "endDateTime", "$top", "$select", "$orderby", "$filter"},
+	"GET /users/{user-id}/calendarView":          {"startDateTime", "endDateTime", "$top", "$select", "$orderby", "$filter"},
+	"POST /me/calendar/getSchedule":              {},
+	"GET /me/events/{event-id}":                  {"$select", "$expand"},
+	"GET /me/onlineMeetings":                     {"$filter", "$select", "$top", "$orderby", "$expand"},
+	"GET /me/calendar":                           {"$select", "$expand"},
+
+	// Calendar writes (plans/calendar.md §4.7): none of them takes a query
+	// option, and none of their api-reference pages documents one.
+	"POST /me/calendar/events":                     {},
+	"PATCH /me/events/{event-id}":                  {},
+	"DELETE /me/events/{event-id}":                 {},
+	"POST /me/events/{event-id}/accept":            {},
+	"POST /me/events/{event-id}/tentativelyAccept": {},
+	"POST /me/events/{event-id}/decline":           {},
+	"POST /me/events/{event-id}/cancel":            {},
+
 	// The colon-addressed upload routes take no query options. They are
 	// fake-only (see routes.go): the api-reference documents the path form, and
 	// Microsoft's OpenAPI description does not model it at all.

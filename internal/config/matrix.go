@@ -177,6 +177,45 @@ var matrix = []Feature{
 		ID: "post-file-chat", Command: "teams post --file (chat)", Scopes: []string{"Files.ReadWrite", "Files.ReadWrite.All"}, Preset: ScopePresetChats, Phase: 4,
 		Source: "refs/graph/api-reference/v1.0/includes/permissions/driveitem-put-content-permissions.md:9",
 	},
+	// Phase 6: calendar. Every row is incremental (Preset "") and none needs
+	// admin consent, so `doctor` reports each one as "not requested yet" rather
+	// than pointing at a preset: the calendar scopes are asked for at first use
+	// (plans/calendar.md §4.8, decision D3). Calendars.ReadBasic is the table's
+	// least-privileged scope, but the live service needed Calendars.Read for the
+	// free/busy detail, so the CLI requests Calendars.Read
+	// (plans/calendar.md §3, F1).
+	{
+		ID: "calendar-list", Command: "teams calendar list", Scopes: []string{"Calendars.Read"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/user-list-calendarview-permissions.md:9",
+	},
+	{
+		ID: "calendar-list-shared", Command: "teams calendar list --user", Scopes: []string{"Calendars.Read.Shared", "Calendars.ReadWrite.Shared"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/user-list-calendarview-permissions.md:9",
+	},
+	{
+		ID: "calendar-freebusy", Command: "teams calendar list --user --free-busy", Scopes: []string{"Calendars.Read"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/calendar-getschedule-permissions.md:9",
+	},
+	{
+		ID: "calendar-search", Command: "teams calendar search", Scopes: []string{"Calendars.Read"}, Phase: 6,
+		Source: "refs/graph/concepts/search-concept-events.md:13",
+	},
+	{
+		ID: "calendar-chat", Command: "teams calendar list --chat / show", Scopes: []string{"OnlineMeetings.Read"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/onlinemeeting-get-permissions.md:9",
+	},
+	{
+		ID: "calendar-respond", Command: "teams calendar accept|tentative|decline", Scopes: []string{"Calendars.ReadWrite"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/event-accept-permissions.md:9",
+	},
+	{
+		ID: "calendar-create-update", Command: "teams calendar create|update", Scopes: []string{"Calendars.ReadWrite"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/api/calendar-post-events.md:12",
+	},
+	{
+		ID: "calendar-cancel-delete", Command: "teams calendar cancel|delete", Scopes: []string{"Calendars.ReadWrite"}, Phase: 6,
+		Source: "refs/graph/api-reference/v1.0/includes/permissions/event-cancel-permissions.md:9",
+	},
 }
 
 // Features returns every row of the matrix, ordered by phase then command so
@@ -236,7 +275,12 @@ func ScopeHint(scope string) string {
 		return hint
 	}
 	if command, ok := IncrementalScopes[scope]; ok {
-		return scope + " is requested on demand by " + command + ", which needs interactive sign-in"
+		// An incremental scope is asked for at first use, which needs a terminal —
+		// and a production tenant may still block user consent, so the hint names
+		// the admin as a possible cause rather than promising it will just work
+		// (plans/calendar.md §3, F1).
+		return scope + " is requested on demand by " + command +
+			", which needs interactive sign-in; your tenant may require an admin to consent first"
 	}
 	if reason, ok := AlternativeScopes[scope]; ok {
 		return scope + " is not in any preset: " + reason

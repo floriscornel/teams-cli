@@ -25,6 +25,7 @@ var (
 	tJan1 = time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
 	tJan2 = time.Date(2026, 1, 2, 9, 0, 0, 0, time.UTC)
 	tJan3 = time.Date(2026, 1, 3, 9, 0, 0, 0, time.UTC)
+	tJan4 = time.Date(2026, 1, 4, 9, 0, 0, 0, time.UTC)
 )
 
 func members(ids ...string) []Member {
@@ -43,7 +44,10 @@ func testModel() Model {
 		{ID: "u-alice", DisplayName: "Alice Example", UserPrincipalName: "alice@contoso.example", Mail: "alice@contoso.example", JobTitle: "Engineer", Relevance: 9},
 		{ID: "u-bob", DisplayName: "Bob Builder", UserPrincipalName: "bob@contoso.example", Mail: "bob@contoso.example", JobTitle: "Designer", Relevance: 5},
 		{ID: "u-carol", DisplayName: "Carol Jones", UserPrincipalName: "carol@contoso.example", Mail: "carol@contoso.example"},
-		{ID: "u-dave", DisplayName: "Dave Kim", UserPrincipalName: "dave@contoso.example", Mail: "dave@contoso.example"},
+		// u-dave exists but has no Exchange Online mailbox, so every calendar
+		// route that needs one answers 404 MailboxNotEnabledForRESTAPI (on
+		// /users/{id}/calendarView) or a 5016 schedule error (on getSchedule).
+		{ID: "u-dave", DisplayName: "Dave Kim", UserPrincipalName: "dave@contoso.example", Mail: "dave@contoso.example", NoMailbox: true},
 		{ID: "u-erin", DisplayName: "Erin Lopez", UserPrincipalName: "erin@contoso.example", Mail: "erin@contoso.example"},
 		{ID: "u-frank", DisplayName: "Frank O'Neil", UserPrincipalName: "frank@contoso.example", Mail: "frank@contoso.example"},
 	}
@@ -110,6 +114,52 @@ func testModel() Model {
 				{ID: "file-2", Name: "notes.txt", ParentID: "folder-c-general", Content: []byte("hello"), ContentType: "text/plain", Created: tJan2, Modified: tJan3},
 			},
 		}},
+		// The calendar seed covers the shapes Phase 6 renders: a Teams meeting,
+		// a plain timed event, an all-day event, a cancelled one, a recurring
+		// occurrence, and one event in a calendar shared with the signed-in
+		// user (plus one shared as free/busy only and one whose mailbox is
+		// missing). The events sit in the tJan1..tJan5 window the frozen clock
+		// and the other fixtures already use.
+		CalendarEvents: []CalendarEvent{
+			{
+				ID: "ev-standup", Subject: "Daily standup", Start: tJan2, End: tJan2.Add(30 * time.Minute),
+				ShowAs: "busy", Teams: true, IsOrganizer: true, Location: "Teams",
+			},
+			{
+				ID: "ev-review", Subject: "Design review", Start: tJan3.Add(2 * time.Hour), End: tJan3.Add(3 * time.Hour),
+				ShowAs: "tentative", OrganizerName: "Alice Example", IsOrganizer: false, Location: "Room 1",
+			},
+			{
+				ID: "ev-holiday", Subject: "Company holiday", Kind: CalendarEventAllDay, Start: tJan2, Days: 1,
+				ShowAs: "oof", IsOrganizer: true,
+			},
+			{
+				ID: "ev-cancelled", Subject: "Cancelled sync", Start: tJan2.Add(5 * time.Hour), End: tJan2.Add(6 * time.Hour),
+				IsCancelled: true, IsOrganizer: true,
+			},
+			{
+				ID: "ev-occurrence", Subject: "Weekly sync", Start: tJan4, End: tJan4.Add(time.Hour),
+				Type: "occurrence", SeriesMasterID: "ev-series", IsOrganizer: true,
+			},
+			{
+				ID: "ev-alice-1", OwnerID: "u-alice", Subject: "Alice 1:1", Start: tJan2.Add(time.Hour), End: tJan2.Add(time.Hour + 30*time.Minute),
+				OrganizerName: "Alice Example", IsOrganizer: true,
+			},
+			{
+				ID: "ev-bob-busy", OwnerID: "u-bob", Subject: "Bob planning", Start: tJan2.Add(2 * time.Hour), End: tJan2.Add(3 * time.Hour),
+				ShowAs: "busy", IsOrganizer: true,
+			},
+			{
+				ID: "ev-erin-busy", OwnerID: "u-erin", Subject: "Erin interview", Start: tJan2.Add(4 * time.Hour), End: tJan2.Add(5 * time.Hour),
+				ShowAs: "busy", IsOrganizer: true,
+			},
+		},
+		CalendarAccess: map[string]string{
+			"u-alice": CalendarAccessRead,
+			"u-bob":   CalendarAccessFreeBusy,
+			// u-erin has an event but no shared-calendar entry at all: the 403
+			// ErrorAccessDenied fallback.
+		},
 	}
 }
 

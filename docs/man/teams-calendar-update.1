@@ -1,0 +1,96 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-calendar-update - Change the fields you name on an event
+
+
+.SH SYNOPSIS
+\fBteams calendar update  [--subject] [--start] [--end|--duration] [--location] [--body] [flags]\fP
+
+
+.SH DESCRIPTION
+Change an event. Only the fields you name are sent, so a change to the time
+cannot drop the meeting body or the Teams link.
+
+.PP
+As a non-organizer an update succeeds but changes only YOUR copy, which the
+organizer's next update overwrites; pass --local-copy to do it anyway.
+
+
+.SH OPTIONS
+\fB--body\fP=""
+	new body text (rewriting a body can drop the Teams meeting details)
+
+.PP
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
+
+.PP
+\fB--duration\fP=""
+	new length (30m, 1h30m); used when --end is not given
+
+.PP
+\fB--end\fP=""
+	new end time
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for update
+
+.PP
+\fB--local-copy\fP[=false]
+	update your own copy even though you are not the organizer
+
+.PP
+\fB--location\fP=""
+	new location
+
+.PP
+\fB--start\fP=""
+	new start time
+
+.PP
+\fB--subject\fP=""
+	new subject
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-calendar(1)\fP

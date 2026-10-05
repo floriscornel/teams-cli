@@ -54,6 +54,16 @@ func (k *testKeyring) Delete(service, user string) error {
 // noItems clears the keychain, simulating a keychain reset or a deleted item.
 func (k *testKeyring) noItems() { k.items = map[string]string{} }
 
+// testNow anchors the frozen test clock to today rather than to a literal date.
+// A literal date expires: TEAMS_ACCESS_TOKEN fixtures are still built from
+// time.Now(), so once the wall clock passes the literal one, a fixture meant to
+// be valid reads as expired (and an "expired" one as valid) and the suite starts
+// failing for a reason that has nothing to do with the code under test. The
+// time of day stays fixed, so a single test run remains deterministic.
+func testNow() time.Time {
+	return time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 12, 0, 0, 0, time.UTC)
+}
+
 func testOptions(t *testing.T) Options {
 	t.Helper()
 	root := t.TempDir()
@@ -77,7 +87,7 @@ func testOptions(t *testing.T) Options {
 			TokenStore:   "auto",
 		},
 		Paths:                    paths,
-		Clock:                    clock.NewFake(time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)),
+		Clock:                    clock.NewFake(testNow()),
 		Environ:                  []string{},
 		DisableInstanceDiscovery: true,
 		Keyring:                  &testKeyring{err: errors.New("no keychain in CI")},
@@ -88,7 +98,7 @@ func TestNewUsesTheEnvAccessToken(t *testing.T) {
 	opts := testOptions(t)
 	token := makeToken(t, map[string]any{
 		"aud":                GraphAppIDAudience,
-		"exp":                float64(time.Date(2026, 10, 4, 13, 0, 0, 0, time.UTC).Unix()),
+		"exp":                float64(testNow().Add(time.Hour).Unix()),
 		"scp":                "User.Read Chat.Read",
 		"preferred_username": "env@example.com",
 		"tid":                "tenant-from-token",
@@ -139,8 +149,8 @@ func TestNewUsesTheEnvAccessToken(t *testing.T) {
 
 func TestNewRejectsABadEnvToken(t *testing.T) {
 	cases := map[string]map[string]any{
-		"wrong audience": {"aud": "https://outlook.office.com", "exp": float64(time.Now().Add(time.Hour).Unix())},
-		"expired":        {"aud": GraphAppIDAudience, "exp": float64(time.Now().Add(-time.Hour).Unix())},
+		"wrong audience": {"aud": "https://outlook.office.com", "exp": float64(testNow().Add(time.Hour).Unix())},
+		"expired":        {"aud": GraphAppIDAudience, "exp": float64(testNow().Add(-time.Hour).Unix())},
 	}
 	for name, claims := range cases {
 		t.Run(name, func(t *testing.T) {

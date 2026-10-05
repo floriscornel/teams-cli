@@ -1,0 +1,77 @@
+# calendar search: hits, the handle `show` accepts, --limit and --all.
+#
+# Search covers the PRIMARY calendar only, does not sort, and returns at most 25
+# results per page (refs/graph/concepts/search-concept-events.md:97). TZ is pinned
+# for the same reason as calendar.txtar.
+
+env TEAMS_ACCESS_TOKEN=$TEAMS_TEST_CALENDAR_TOKEN
+env TZ=Asia/Tokyo
+
+exec teams calendar search standup
+stdout '^ID\tDATE\tWHEN\tSUBJECT'
+stdout 'Standup'
+stdout '09:00–09:30'
+! stdout 'Design review'
+
+# The handle a search prints resolves with `show`, so a hit is usable directly.
+# The search service reports hitId in standard base64; the CLI converts it back to
+# the event id (plans/calendar.md §3, F8), so the handle matches the listing's.
+# Three hits come back for "standup" — two live events and one index entry whose
+# event is gone — so the rows are the two readable ones, in start order.
+exec teams calendar search standup --json --jq 'length'
+stdout '^2$'
+stderr '1 search hit\(s\) could not be read'
+exec teams calendar search standup --json --jq '.[].handle'
+stdout '^2a079d4$'
+stdout '^f17aee0$'
+exec teams calendar show f17aee0
+stdout 'subject:.*Standup'
+stdout 'id:.*AAMkAGNmZDBm'
+
+# The JSON schema is the listing's: source is events and user is me.
+exec teams calendar search standup --json --jq '[.[].source] | unique | join(",")'
+stdout '^events$'
+exec teams calendar search standup --json --jq '[.[].user] | unique | join(",")'
+stdout '^me$'
+exec teams calendar search standup --json --jq '[.[].id] | join(",")'
+stdout '^AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAE=,AAMkAGNmZDBmZWMtYTFlMi00MmU5LWE5YzUtZjJjZmQ0MWUxM2M0-q0BRrNpC0P0_Rk4AASLUG4RAAA=$'
+
+# A query that matches nothing is an empty table plus a note on stderr, not an
+# error. --json stays exactly the empty array.
+exec teams calendar search nothing-matches-this
+stderr 'no events matched "nothing-matches-this"'
+! stdout 'Standup'
+exec teams calendar search nothing-matches-this --json --jq 'length'
+stdout '^0$'
+! stderr 'no events'
+
+# --limit caps the output, and --all pages every result. The seed has one match
+# for "a", so the page size is exercised by "company" plus the paging loop.
+exec teams calendar search a --limit 1 --json --jq 'length'
+stdout '^1$'
+exec teams calendar search a --all --json --jq 'length > 1'
+stdout '^true$'
+
+# Search needs a query.
+! exec teams calendar search
+stderr 'requires at least 1 arg'
+! exec teams calendar search '   '
+stderr 'search needs a query'
+
+# The search index still holds an event that is gone, so one hit of this query
+# cannot be read. That must warn rather than vanish: the old code logged it at
+# debug level only, which is how a wrong id conversion turned every search into an
+# empty table without a word on stderr (plans/calendar.md §4.4).
+exec teams calendar search findable
+stderr '1 search hit\(s\) could not be read'
+stdout 'Findable meeting'
+! stdout 'Findable standup'
+
+# -v explains which hit failed and why.
+exec teams calendar search findable -v
+stderr 'could not be read'
+
+# Every hit failing is a failure, not an empty calendar: exit 1 beats an empty
+# table that claims the query matched nothing.
+! exec teams calendar search 'Findable standup'
+stderr 'none of the 1 search hit\(s\) could be read'

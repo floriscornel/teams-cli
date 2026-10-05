@@ -1,0 +1,74 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-calendar - List, show and search your calendar, and act on meetings
+
+
+.SH SYNOPSIS
+\fBteams calendar [flags]\fP
+
+
+.SH DESCRIPTION
+Read your calendar, or a colleague's, and act on meetings.
+
+.PP
+Days and times are LOCAL: a day runs midnight to midnight in --tz, or in
+this machine's zone when --tz is not given. All-day events are floating, so
+they are matched by date and never shifted by a timezone conversion.
+
+.PP
+The write commands notify people: an invitation reaches every --attendee as
+soon as the event is created, accepting or declining tells the organizer,
+and cancelling or deleting a meeting you organize sends your attendees a
+cancellation. They ask for confirmation first, and take --dry-run.
+
+.PP
+Calendar scopes are requested at first use, so your profile may ask for them
+the first time one of these commands runs.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for calendar
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams(1)\fP, \fBteams-calendar-accept(1)\fP, \fBteams-calendar-cancel(1)\fP, \fBteams-calendar-create(1)\fP, \fBteams-calendar-decline(1)\fP, \fBteams-calendar-delete(1)\fP, \fBteams-calendar-list(1)\fP, \fBteams-calendar-search(1)\fP, \fBteams-calendar-show(1)\fP, \fBteams-calendar-tentative(1)\fP, \fBteams-calendar-update(1)\fP

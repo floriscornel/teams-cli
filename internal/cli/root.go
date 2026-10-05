@@ -71,6 +71,10 @@ type App struct {
 	entityCache *store.EntityCache
 	aliases     map[string]string
 	me          *graph.Me
+	// injectedUser is the identity a test with Hooks.GrantedScopes gets, so a
+	// command that has to know who is signed in can still fail its scope check
+	// without a network round trip.
+	injectedUser graph.Me
 }
 
 // New builds an App around the given streams. The Printer is built here rather
@@ -411,6 +415,10 @@ func (a *App) newRootCmd() *cobra.Command {
 		a.newReactCmd(),
 		a.newAPICmd(),
 	)
+	// Phase 6: the calendar (read side; the write verbs land in 6b).
+	root.AddCommand(
+		a.newCalendarCmd(),
+	)
 	return root
 }
 
@@ -426,6 +434,10 @@ func isWriteCommand(cmd *cobra.Command, args []string) bool {
 		case "post", "reply", "edit", "delete", "react":
 			return true
 		case "login", "logout", "mark-read", "mark-unread", "add-member", "create":
+			return true
+		// Phase 6b: the calendar verbs that change something. `list`, `show` and
+		// `search` are deliberately absent, so --read-only still allows them.
+		case "accept", "tentative", "decline", "cancel", "update":
 			return true
 		case "api":
 			return apiWrites(args)

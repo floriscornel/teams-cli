@@ -83,3 +83,4 @@ output derived from it.
 - **Exit codes:** 0 ok, 1 error, 2 usage, 3 auth required, 4 not found, 5 throttled.
 - **Never prompt in non-interactive mode** (`--no-input`, CI, piped input): fail fast instead.
 - **Secrets:** never accept secrets on argv, never print them, never write them to config files.
+- **Pull requests** should be used for all changes to the repository, ensuring code review, CI validation, and adherence to project conventions before merging. Do not commit directly to the main branch.

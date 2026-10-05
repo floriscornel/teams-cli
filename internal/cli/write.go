@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/floriscornel/teams-cli/internal/auth"
+	"github.com/floriscornel/teams-cli/internal/config"
 	"github.com/floriscornel/teams-cli/internal/format"
 	"github.com/floriscornel/teams-cli/internal/graph"
 	"github.com/floriscornel/teams-cli/internal/output"
@@ -606,7 +607,10 @@ type dryRunDocument struct {
 	DryRun bool   `json:"dryRun"`
 	Method string `json:"method"`
 	Path   string `json:"path"`
-	Body   any    `json:"body,omitempty"`
+	// Body is the request body. It is named requestBody rather than body because
+	// several Graph bodies carry a property called "body" (an event, a message),
+	// and a reader of the JSON could not tell the two apart.
+	Body any `json:"requestBody,omitempty"`
 	// Paths lists the extra requests a command makes when one is not enough
 	// (chat add-member adds one member per call).
 	Paths []string `json:"paths,omitempty"`
@@ -691,7 +695,50 @@ func (a *App) GraphBaseURL() string {
 // the user to re-consent; in non-interactive mode it fails with exit 3 and the
 // hint (which names the admin request), because prompting is not allowed there.
 func (a *App) requireIncrementalScope(ctx context.Context, command, scope string) error {
-	err := a.requireScope(ctx, command, []string{scope})
+	// A thin wrapper, so `chat delete` behaves exactly as it always has: one
+	// required scope, one requested scope, the same prompt and the same exit-3
+	// error.
+	return a.requireIncrementalScopes(ctx, command, []string{scope}, []string{scope})
+}
+
+// requireIncrementalScopes checks scopes that no preset carries and, on a
+// terminal, offers to sign in again to request them.
+//
+// anyOf is the set the command can work with (the any-of rule requireScopes
+// applies); request is the set a re-consent asks for, which is a superset when
+// a command can use either of two scopes but needs the narrower one granted to
+// be useful. The calendar commands are the reason this exists: Calendars.Read or
+// Calendars.ReadWrite satisfies a read, but the re-consent asks for
+// Calendars.Read and Calendars.Read.Shared, so the first `calendar list`
+// afterwards also works for a colleague (plans/calendar.md §4.8).
+func (a *App) requireIncrementalScopes(ctx context.Context, command string, anyOf, request []string) error {
+	// An explicit any-of check first, so the answer does not depend on which
+	// scope source requireScope would consult: a TEAMS_ACCESS_TOKEN is not checked
+	// there at all, and an injected test grant must still be honoured.
+	if granted := a.Hooks.GrantedScopes; granted != nil {
+		if missing := config.Scopes.Missing(granted, anyOf); len(missing) < len(anyOf) {
+			return nil
+		}
+		return a.requireScopesFrom(command, granted, anyOf)
+	}
+	authClient, authErr := a.Auth(ctx)
+	if authErr != nil {
+		return authErr
+	}
+	if authClient.Static() {
+		// The token is not scope-checked, so nothing to pre-check: the request
+		// itself is the check, and a 403 names the scope.
+		a.Printer.Debugf("TEAMS_ACCESS_TOKEN is set; skipping the scope pre-check")
+		return nil
+	}
+	granted, gerr := authClient.GrantedScopes(ctx)
+	if gerr != nil {
+		return gerr
+	}
+	if missing := config.Scopes.Missing(granted, anyOf); len(missing) < len(anyOf) {
+		return nil
+	}
+	err := a.requireScopesFrom(command, granted, anyOf)
 	if err == nil {
 		return nil
 	}
@@ -699,27 +746,17 @@ func (a *App) requireIncrementalScope(ctx context.Context, command, scope string
 		// Tests inject the granted set; there is no session to re-consent.
 		return err
 	}
-	authClient, authErr := a.Auth(ctx)
-	if authErr != nil {
-		return authErr
-	}
-	if authClient.Static() {
-		// TEAMS_ACCESS_TOKEN is not scope-checked, so requireScope only fails
-		// here when the token itself is unusable.
-		return err
-	}
 	if !a.Printer.Interactive() {
 		return err
 	}
-	prompt := command + " needs " + scope + " (admin consent). Sign in again to request it?"
-	if confirmErr := a.confirm(prompt, false); confirmErr != nil {
+	if confirmErr := a.confirm(a.incrementalScopePrompt(command, request), false); confirmErr != nil {
 		return confirmErr
 	}
 	eff, effErr := a.Effective()
 	if effErr != nil {
 		return effErr
 	}
-	scopes := append(append([]string(nil), eff.Scopes...), scope)
+	scopes := append(append([]string(nil), eff.Scopes...), request...)
 	a.Printer.Statusf("requesting %s", strings.Join(scopes, " "))
 	_, loginErr := authClient.Login(ctx, auth.LoginOptions{
 		Scopes:      scopes,
@@ -744,7 +781,26 @@ func (a *App) requireIncrementalScope(ctx context.Context, command, scope string
 	}
 	// Re-check: an admin may still not have consented, and then the honest
 	// failure is the exit-3 scope error with its admin hint.
-	return a.requireScopes(ctx, command, []string{scope})
+	return a.requireScope(ctx, command, anyOf)
+}
+
+// incrementalScopePrompt words the re-consent question. "(admin consent)" is
+// only claimed for a scope the Graph permissions reference actually marks as
+// needing one; otherwise the honest wording is that the tenant may still
+// require an admin to approve it, which is what the handoff saw on a production
+// tenant (plans/calendar.md §3, F1).
+func (a *App) incrementalScopePrompt(command string, request []string) string {
+	needsAdmin := ""
+	for _, scope := range request {
+		if config.Scopes.RequiresAdminConsent(scope) {
+			needsAdmin = " (admin consent)"
+			break
+		}
+	}
+	if needsAdmin == "" {
+		needsAdmin = " (your tenant may still require an admin to approve it)"
+	}
+	return command + " needs " + strings.Join(request, ", ") + needsAdmin + ". Sign in again to request it?"
 }
 
 // messageTargetPath is the path a dry-run document shows for a message action.

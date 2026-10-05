@@ -156,8 +156,16 @@ func TestFeatureMatrixIsWellFormed(t *testing.T) {
 				t.Errorf("feature %q needs %q, which no preset, incremental set or alternative table lists", f.ID, scope)
 			}
 		}
+		// A row with no preset is only legitimate when every one of its scopes
+		// is in the incremental set: that is what makes the "no preset" case a
+		// scope the command asks for at first use rather than a row nobody can
+		// obtain (plans/calendar.md §4.8).
 		if f.Preset == "" && !f.AdminConsent {
-			t.Errorf("feature %q has neither a preset nor an admin-consent flag", f.ID)
+			for _, scope := range f.Scopes {
+				if _, incremental := IncrementalScopes[scope]; !incremental {
+					t.Errorf("feature %q has no preset and %q is not an incremental scope", f.ID, scope)
+				}
+			}
 		}
 		// A row that names a preset must have at least one alternative the preset
 		// actually contains, otherwise the "smallest preset that has it" hint is

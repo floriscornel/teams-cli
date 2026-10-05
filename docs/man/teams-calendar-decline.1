@@ -1,0 +1,83 @@
+.nh
+.TH "TEAMS" "1" "Oct 2026" "teams dev" "teams Manual"
+
+.SH NAME
+teams-calendar-decline - Decline a meeting invitation
+
+
+.SH SYNOPSIS
+\fBteams calendar decline  [flags]\fP
+
+
+.SH DESCRIPTION
+Decline a meeting you were invited to, optionally proposing a different time
+with --propose.
+
+.PP
+Declining moves the event to Deleted Items, so it leaves your calendar.
+
+
+.SH OPTIONS
+\fB--comment\fP=""
+	message to send with the response
+
+.PP
+\fB--dry-run\fP[=false]
+	print the Graph request without sending it
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for decline
+
+.PP
+\fB--no-notify\fP[=false]
+	do not tell the organizer about the response
+
+.PP
+\fB--notify\fP[=true]
+	tell the organizer about the response
+
+.PP
+\fB--propose\fP=""
+	propose a new time as /
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--jq\fP=""
+	filter JSON output through a jq expression (implies --json)
+
+.PP
+\fB--json\fP[=false]
+	machine-readable JSON output
+
+.PP
+\fB--no-color\fP[=false]
+	disable colours (also honours NO_COLOR)
+
+.PP
+\fB--no-input\fP[=false]
+	never prompt; fail fast instead
+
+.PP
+\fB--profile\fP=""
+	profile to use (default: the configured default_profile)
+
+.PP
+\fB--quiet\fP[=false]
+	suppress progress messages on stderr
+
+.PP
+\fB--read-only\fP[=false]
+	refuse write commands
+
+.PP
+\fB--refresh\fP[=false]
+	ignore cached names and resolve them again
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=0]
+	verbose diagnostics on stderr (-v, -vv)
+
+
+.SH SEE ALSO
+\fBteams-calendar(1)\fP

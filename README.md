@@ -1,9 +1,11 @@
 # teams
 
-`teams` is a command-line client for Microsoft Teams. It reads everything you can
-see in Teams — your teams and channels, threads, chats, search results, mentions,
-unread messages, people, files — and it writes: post, reply, edit, delete, react,
-attach files, create chats, change members and move your read state.
+`teams` is a command-line client for Microsoft Teams and Outlook calendar. It
+reads everything you can see in Teams — your teams and channels, threads, chats,
+search results, mentions, unread messages, people, files — and it writes: post,
+reply, edit, delete, react, attach files, create chats, change members and move
+your read state. It also reads your calendar, or a colleague's, and creates,
+moves, answers, cancels and deletes meetings.
 
 It is one static binary with no runtime to install. Reading and writing both work
 from a script, a cron job or an AI agent, and the same binary can sign in as a
@@ -27,7 +29,27 @@ posted 1750000000003
 
 ## Install
 
-**Download a release** (macOS, Linux and Windows; `amd64` and `arm64`):
+**With mise**, the recommended way ([mise-en-place](https://mise.jdx.dev)):
+
+```bash
+mise use -g github:floriscornel/teams-cli
+```
+
+mise takes the archive for your platform out of the release, checks it against the
+digest GitHub reports, **verifies the build-provenance attestation**, unpacks it and
+puts `teams` on your PATH — no archive and no checksum step to do by hand. `-g`
+records the tool for every shell; without it, the tool lands in the current
+project's `mise.toml` instead.
+
+Name a version to pin one, which is also how to install a release published in the
+last day: mise withholds those from `@latest` on purpose (`minimum_release_age`,
+24 h by default):
+
+```bash
+mise use -g github:floriscornel/teams-cli@1.1.0
+```
+
+**Or download a release** (macOS, Linux and Windows; `amd64` and `arm64`):
 
 ```bash
 gh release download --repo floriscornel/teams-cli --pattern 'teams_*_darwin_arm64.tar.gz'
@@ -41,13 +63,15 @@ install teams ~/.local/bin/teams
 go install github.com/floriscornel/teams-cli/cmd/teams@latest
 ```
 
-The archives also carry the man pages (`man teams`) and shell completions for
-bash, zsh, fish and PowerShell (`completions/`). Without an archive,
+Every archive carries the man pages (`man teams`) and shell completions for bash,
+zsh, fish and PowerShell (`completions/`); a mise install keeps all of it in the
+directory `mise where github:floriscornel/teams-cli` prints. Without an archive,
 `teams completion bash` prints the same script, and `teams version --check` says
 whether a newer release exists.
 
 Every release ships `checksums.txt`, signed with cosign keyless and covered by a
-GitHub build-provenance attestation:
+GitHub build-provenance attestation — mise verifies it for you, and a hand
+download can be checked the same way:
 
 ```bash
 gh attestation verify --owner floriscornel teams_*_darwin_arm64.tar.gz \
@@ -89,12 +113,33 @@ The token cache is encrypted and stays local; see
 | `teams unread [--chats --mentions] [--since]` | What is waiting for you |
 | `teams user search <q>` · `teams user show <person>` | People in your directory |
 | `teams channel files <channel>` · `teams file download <message> [-o dir]` | A channel's files, and a message's attachments |
+| `teams calendar list [--user <who> --date <day> --days N --from/--to --tz --free-busy --chat --include-cancelled]` | Meetings for a day or a range, yours or a colleague's |
+| `teams calendar show <event>` · `teams calendar search <query>` | One event in full, and a search over your primary calendar |
 | `teams alias set\|list\|rm` | Names you can use anywhere a reference is |
 
 `teams search` takes the documented KQL scope terms both as flags and inline in
 the query, so `teams search 'from:bob deploy sent>=2026-10-01'` works. Hits carry
 no message body — Graph does not return one — so pipe the `webUrl` into
 `teams thread read` when you want the text.
+
+```bash
+teams calendar list                                # today
+teams calendar list --date tomorrow --tz Asia/Tokyo
+teams calendar list --from mon --to fri            # weekdays read naturally
+teams calendar list --user bob@example.com          # full details if shared
+teams calendar list --user bob@example.com --free-busy
+teams calendar list --chat                         # resolve each meeting's chat
+teams calendar show a1b2c3d                        # a handle from the listing
+teams calendar search standup
+```
+
+Days are **local**: a day runs midnight to midnight in `--tz`, or in this
+machine's zone without it. All-day events are floating, so they are matched by
+date and never shifted by a timezone conversion. The `ID` column is a 7-character
+handle for Graph's 152-character event id; `show` accepts the handle, the full id,
+or an Outlook web link. A colleague's calendar is shown in full when it is shared
+with you; otherwise the command falls back to free/busy (times and status only)
+and says so on stderr.
 
 ## Writing
 
@@ -128,6 +173,41 @@ teams reply Engineering/General/m-1002 'on it' --dry-run
 Anything that writes supports `--dry-run`, which prints the Graph request it
 would send instead of sending it — including the uploads a message with `--file`
 would perform.
+
+## Writing to your calendar
+
+```bash
+teams calendar create --subject Standup --start 09:00 --duration 15m --attendee bob@example.com
+teams calendar create --subject Offsite --all-day --date 2026-10-12 --days 2
+teams calendar create --subject "Design review" --start 14:00 --teams
+teams calendar accept a1b2c3d --comment "see you there"
+teams calendar tentative a1b2c3d --propose "2026-10-07 15:00/2026-10-07 15:30"
+teams calendar update a1b2c3d --subject "Moved review" --start 15:00 --duration 45m
+teams calendar cancel a1b2c3d --comment "rescheduling"
+teams calendar delete a1b2c3d --yes
+```
+
+**These commands notify people.** Creating with `--attendee` sends the
+invitations immediately, so on a terminal the command asks first and anywhere
+else it needs `--yes`. Accepting, tentatively accepting and declining tell the
+organizer; cancelling a meeting — or deleting one you organize — sends your
+attendees a cancellation. `--dry-run` prints the request instead of sending it
+(and still runs the read-only checks), and `--no-notify` answers without telling
+the organizer.
+
+The CLI refuses what Graph would reject, before sending anything:
+
+- responding to a meeting **you** organize (`you are the organizer…`);
+- cancelling one you do not organize (use `teams calendar decline`);
+- updating one you do not organize, unless `--local-copy` — otherwise you change
+  only your copy and the organizer's next update overwrites it;
+- `--propose` together with `--no-notify` (a proposed time has to reach the
+  organizer), or on an event whose organizer does not accept proposals;
+- `create --teams` on a mailbox that cannot make Teams meetings.
+
+`update` sends **only the fields you name**, so moving a meeting cannot drop its
+body or its Teams link. `--body` rewrites the body and can lose the Teams meeting
+details, which is why it is never sent unless you ask for it.
 
 ## Mentions, files and images
 
@@ -183,6 +263,7 @@ teams chat list --unread --json | jq -r '.[].topic'
 teams search deploy --json --jq '.hits[0].webUrl'
 teams channel read Engineering/General --json --jq '.[0].body.content'
 teams unread --json --jq '{chats: (.chats | length), mentions: (.mentions | length)}'
+teams calendar list --date tomorrow --json --jq '.[] | "\(.start) \(.subject)"'
 ```
 
 Exit codes are the same everywhere, so a script can tell failures apart:
@@ -290,6 +371,22 @@ immediately, names the scope, and exits 3 — it does not call Graph first.
 because an admin has to consent to it. On a terminal the CLI offers to sign in
 again with that scope; anywhere else it exits 3 with the admin request.
 
+The **calendar** commands work the same way, because a calendar scope in a preset
+would make every existing login ask for it (which triggers `AADSTS65001`):
+
+| Command | Scope |
+|---|---|
+| `teams calendar list` (your own), `show`, `search` | `Calendars.Read` |
+| `teams calendar list --user <colleague>` | `Calendars.Read.Shared` |
+| `teams calendar list --chat`, `show` (chat lookup) | `OnlineMeetings.Read` |
+
+None of them needs admin consent by the docs, but a production tenant may still
+block user consent, in which case the error's hint says so and
+`teams auth status --admin-request` prints the ticket. Listing a colleague by
+**address** needs nothing beyond the calendar scopes; naming them by display name
+additionally resolves through the directory, which needs `User.ReadBasic.All` or
+`People.Read`.
+
 ## Where your data lives
 
 | Kind | Where | Removed by |
@@ -357,18 +454,25 @@ else is refused.
 
 ## Status
 
-Reading, writing and the polish work are done: the binary is what this README
-describes, and this documentation is also published at
-**<https://floriscornel.github.io/teams-cli/>** (generated from the repository).
-The first tagged release, `v1.0.0`, is the maintainer's next step.
+**`v1.1.0` is the current release.** It adds the calendar, read and write:
+`teams calendar list`, `show` and `search`, and `create`, `update`, `accept`,
+`tentative`, `decline`, `cancel` and `delete`. `v1.0.x` covers everything else
+here. The binary is what this README describes, and this documentation is also
+published at **<https://floriscornel.github.io/teams-cli/>** (generated from the
+repository).
 
-After that, in order:
+In order from here:
 
 1. **AI features** — `summarize`, `ask`, `draft`, `catchup` with an Anthropic,
    OpenAI-compatible or Azure/Foundry provider, conversation history and curated
    memory. Opt-in, off by default.
 2. **Service accounts** — the Key Vault token store, `auth export`/`auth refresh`
    and a CI guide, for unattended runners.
+
+Not in either release yet, and asked for often enough to say so: `forward` a
+meeting, delta sync, rooms and resources as first-class targets, and editing a
+whole recurring series (every calendar action applies to the single instance you
+list).
 
 [PLAN.md](PLAN.md) is the full design and the reasoning behind each decision.
 

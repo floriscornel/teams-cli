@@ -12,9 +12,9 @@
   },
   "counts": {
     "pathKeysInSource": 11546,
-    "pathsKept": 45,
-    "schemasKept": 657,
-    "responsesKept": 10,
+    "pathsKept": 52,
+    "schemasKept": 658,
+    "responsesKept": 11,
     "parametersKept": 5,
     "requestBodiesKept": 0,
     "odataTypeRequiredStripped": 505,

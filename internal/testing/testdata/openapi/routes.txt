@@ -31,9 +31,17 @@ PUT /drives/{drive-id}/items/{driveItem-id}/content refs/graph/api-reference/v1.
 POST /drives/{drive-id}/items/{driveItem-id}/createLink refs/graph/api-reference/v1.0/api/driveitem-createlink.md
 POST /drives/{drive-id}/items/{driveItem-id}/createUploadSession refs/graph/api-reference/v1.0/api/driveitem-createuploadsession.md
 GET /me refs/graph/api-reference/v1.0/api/user-get.md
+POST /me/calendar/events refs/graph/api-reference/v1.0/api/calendar-post-events.md
 GET /me/chats refs/graph/api-reference/v1.0/api/chat-list.md
 GET /me/chats/{chat-id} refs/graph/api-reference/v1.0/api/chat-get.md
 GET /me/drive refs/graph/api-reference/v1.0/api/drive-get.md
+DELETE /me/events/{event-id} refs/graph/api-reference/v1.0/api/event-delete.md
+GET /me/events/{event-id} refs/graph/api-reference/v1.0/api/event-get.md
+PATCH /me/events/{event-id} refs/graph/api-reference/v1.0/api/event-update.md
+POST /me/events/{event-id}/accept refs/graph/api-reference/v1.0/api/event-accept.md
+POST /me/events/{event-id}/cancel refs/graph/api-reference/v1.0/api/event-cancel.md
+POST /me/events/{event-id}/decline refs/graph/api-reference/v1.0/api/event-decline.md
+POST /me/events/{event-id}/tentativelyAccept refs/graph/api-reference/v1.0/api/event-tentativelyaccept.md
 GET /me/joinedTeams refs/graph/api-reference/v1.0/api/user-list-joinedteams.md
 GET /me/people refs/graph/api-reference/v1.0/api/user-list-people.md
 POST /search/query refs/graph/api-reference/v1.0/api/search-query.md
@@ -60,4 +68,5 @@ POST /teams/{team-id}/channels/{channel-id}/messages/{chatMessage-id}/unsetReact
 GET /teams/{team-id}/members refs/graph/api-reference/v1.0/api/team-list-members.md
 GET /users refs/graph/api-reference/v1.0/api/user-list.md
 GET /users/{user-id} refs/graph/api-reference/v1.0/api/user-get.md
+GET /users/{user-id}/calendar/calendarView refs/graph/api-reference/v1.0/api/calendar-list-calendarview.md
 POST /users/{user-id}/chats/{chat-id}/messages/{chatMessage-id}/softDelete refs/graph/api-reference/v1.0/api/chatmessage-softdelete.md

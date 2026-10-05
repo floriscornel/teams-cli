@@ -66,7 +66,12 @@ func buildRoutes() []routeDef {
 		// are Chat.Read, Chat.ReadWrite and ChannelMessage.Read.All
 		// (refs/graph/api-reference/v1.0/resources/search-api-overview.md,
 		// refs/INDEX.md's search note).
-		{method: "POST", pattern: "/search/query", scopes: []string{"Chat.Read", "Chat.ReadWrite", "ChannelMessage.Read.All"}, fn: handleSearch},
+		// /search/query serves several entity types and its permission set depends
+		// on the one asked for: chatMessage needs Chat.Read / Chat.ReadWrite /
+		// ChannelMessage.Read.All, and `event` needs Calendars.Read (Phase 6).
+		// The route therefore accepts the union; the handler decides which entity
+		// types it can serve at all.
+		{method: "POST", pattern: "/search/query", scopes: []string{"Chat.Read", "Chat.ReadWrite", "ChannelMessage.Read.All", "Calendars.Read", "Calendars.ReadWrite"}, fn: handleSearch},
 		{method: "GET", pattern: "/users", scopes: []string{"User.ReadBasic.All"}, fn: handleListUsers},
 		{method: "GET", pattern: "/users/{user-id}", scopes: []string{"User.ReadBasic.All"}, fn: handleGetUser},
 		{method: "GET", pattern: "/me/people", scopes: []string{"People.Read"}, fn: handlePeople},
@@ -117,6 +122,43 @@ func buildRoutes() []routeDef {
 		{method: "GET", pattern: "/_download/{drive-id}/{driveItem-id}", fn: handleDownload},
 		{method: "PUT", pattern: "/_upload/{upload-id}", fn: handleUploadChunk},
 
+		// Calendar (PLAN.md Phase 6; refs/INDEX.md "Calendar").
+		//
+		// The read scope is Calendars.Read with Calendars.ReadWrite as the
+		// documented higher-privileged alternative, and Calendars.ReadBasic is
+		// what the api-reference's own table names as least privileged
+		// (refs/graph/api-reference/v1.0/includes/permissions/user-list-calendarview-permissions.md:9).
+		// Calendars.Read.Shared is accepted for the shared-calendar path, whose
+		// live *success* behaviour the handoff could not verify
+		// (plans/calendar.md §3, F11).
+		{method: "GET", pattern: "/me/calendarView", scopes: calendarReadScopes, fn: handleCalendarView},
+		// The /users form the api-reference documents and the OpenAPI
+		// description declares, so the Layer 6 contract test exercises this one
+		// (refs/graph/api-reference/v1.0/api/calendar-list-calendarview.md:33).
+		{method: "GET", pattern: "/users/{user-id}/calendar/calendarView", scopes: calendarSharedReadScopes, fn: handleCalendarView},
+		// The handoff lists the shorter /users/{id}/calendarView spelling as
+		// verified live (plans/calendar.md §3, F4), and the OpenAPI description
+		// declares it too, but no api-reference page documents it, so it can
+		// never be committed to the contract route list. The fake serves both so
+		// either CLI spelling works.
+		{method: "GET", pattern: "/users/{user-id}/calendarView", scopes: calendarSharedReadScopes, fn: handleCalendarView},
+		{method: "POST", pattern: "/me/calendar/getSchedule", scopes: calendarReadScopes, fn: handleGetSchedule},
+		{method: "GET", pattern: "/me/events/{event-id}", scopes: calendarReadScopes, fn: handleGetEvent},
+		{method: "GET", pattern: "/me/onlineMeetings", scopes: []string{"OnlineMeetings.Read", "OnlineMeetings.ReadWrite"}, fn: handleOnlineMeetings},
+		{method: "GET", pattern: "/me/calendar", scopes: calendarReadScopes, fn: handleCalendar},
+		// The writes need Calendars.ReadWrite, which the api-reference lists as the
+		// only permission for all of them
+		// (refs/graph/api-reference/v1.0/includes/permissions/event-accept-permissions.md:9).
+		// Create is documented as POST /me/calendar/events, not POST /me/events
+		// (refs/graph/api-reference/v1.0/api/calendar-post-events.md:12).
+		{method: "POST", pattern: "/me/calendar/events", scopes: calendarWriteScopes, fn: handleCreateEvent},
+		{method: "PATCH", pattern: "/me/events/{event-id}", scopes: calendarWriteScopes, fn: handleUpdateEvent},
+		{method: "DELETE", pattern: "/me/events/{event-id}", scopes: calendarWriteScopes, fn: handleDeleteEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/accept", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/tentativelyAccept", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/decline", scopes: calendarWriteScopes, fn: handleRespondEvent},
+		{method: "POST", pattern: "/me/events/{event-id}/cancel", scopes: calendarWriteScopes, fn: handleCancelEvent},
+
 		// $batch. Sub-requests are checked against their own route's scope, so
 		// the batch itself requires none (refs/graph/concepts/json-batching.md).
 		{method: "POST", pattern: "/$batch", fn: handleBatch},
@@ -140,6 +182,19 @@ var (
 	// higher-privileged alternative the docs list for both
 	// (refs/graph/api-reference/v1.0/includes/permissions/driveitem-put-content-permissions.md:9).
 	filesWriteScopes = []string{"Files.ReadWrite.All", "Files.ReadWrite", "Sites.ReadWrite.All"}
+	// calendarReadScopes is the calendar read set. Calendars.ReadBasic is the
+	// table's least privileged, Calendars.Read is what the live service needed
+	// for the free/busy detail and for subjects on your own calendar, and
+	// Calendars.ReadWrite is the documented higher-privileged alternative
+	// (plans/calendar.md §3, F1 and F7).
+	calendarReadScopes = []string{"Calendars.ReadBasic", "Calendars.Read", "Calendars.ReadWrite"}
+	// calendarSharedReadScopes adds the shared-calendar scope that another
+	// user's calendarView needs (plans/calendar.md §3, F1).
+	calendarSharedReadScopes = []string{"Calendars.ReadBasic", "Calendars.Read", "Calendars.ReadWrite", "Calendars.Read.Shared", "Calendars.ReadWrite.Shared"}
+	// calendarWriteScopes is every write: Calendars.ReadWrite, with the shared
+	// variant, because the api-reference lists exactly one permission for each
+	// response and for cancel/delete (plans/calendar.md §3, F1).
+	calendarWriteScopes = []string{"Calendars.ReadWrite", "Calendars.ReadWrite.Shared"}
 )
 
 // chatRoutes returns every chat route under one prefix. The read scope differs

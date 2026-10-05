@@ -16,7 +16,7 @@ import (
 
 // newAuthCmd implements `teams auth login|status|logout`.
 //
-// `auth refresh` and `auth export` are Phase 7 (the bot/headless work): refresh
+// `auth refresh` and `auth export` are Phase 8 (the bot/headless work): refresh
 // only makes sense once a scheduled job feeds it, and export needs a second
 // store to export to.
 func (a *App) newAuthCmd() *cobra.Command {

@@ -128,7 +128,7 @@ func (a *App) runDoctor(ctx context.Context, offline bool) []doctorCheck {
 	if eff.TokenStore == "keyvault://" || strings.HasPrefix(eff.TokenStore, "keyvault://") {
 		storeCheck.Status = statusWarn
 		storeCheck.Detail = eff.TokenStore
-		storeCheck.Fix = "the Key Vault backend arrives in Phase 7; use auto or file for now"
+		storeCheck.Fix = "the Key Vault backend arrives in Phase 8; use auto or file for now"
 		checks = append(checks, storeCheck)
 	} else {
 		client, err := a.Auth(ctx)

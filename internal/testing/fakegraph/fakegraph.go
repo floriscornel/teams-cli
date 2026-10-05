@@ -125,6 +125,12 @@ type Options struct {
 	// default is permissive, because most tests do not exercise
 	// authentication.
 	RequireToken bool
+	// ScopesFromTokenOnly makes the grant come strictly from the bearer token's
+	// scp claim, so a request that needs a scope the token does not carry is a
+	// 403 instead of being covered by the permissive default. The CLI's own
+	// tests use it against a TEAMS_ACCESS_TOKEN, where the CLI skips its own
+	// pre-check.
+	ScopesFromTokenOnly bool
 	// Faults inject failures per route and call index.
 	Faults []Fault
 	// SearchPageSize overrides the default search page size.
@@ -372,14 +378,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, sub bool) {
 	}
 
 	ctx := &handlerCtx{
-		s:      s,
-		w:      sw,
-		r:      r,
-		rel:    rel,
-		params: params,
-		query:  r.URL.Query(),
-		body:   body,
-		rec:    rec,
+		s:       s,
+		w:       sw,
+		r:       r,
+		rel:     rel,
+		params:  params,
+		query:   r.URL.Query(),
+		body:    body,
+		rec:     rec,
+		granted: granted,
 	}
 	route.fn(ctx)
 }
@@ -423,6 +430,17 @@ func (s *Server) grantedScopes(r *http.Request) ([]string, bool) {
 		}
 	default:
 		granted = defaultGrantedScopes()
+	}
+	// A script that tests what a *token* can do wants the token's own scp claim
+	// and nothing else: the permissive default would grant the scopes the script
+	// deliberately left out.
+	if s.opts.ScopesFromTokenOnly && bearerToken(r) != "" {
+		if scopes, ok := scopesFromToken(bearerToken(r)); ok {
+			granted = scopes
+			authenticated = true
+		} else {
+			granted = nil
+		}
 	}
 	return s.withholdUnconsented(granted), authenticated
 }

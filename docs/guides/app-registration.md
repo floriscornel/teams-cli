@@ -55,6 +55,29 @@ Notes:
 - `teams chat delete` needs `Chat.ManageDeletion.All`, which is in no preset. The
   CLI requests it on demand; add it here if you want the command to work without
   a second sign-in.
+- **The calendar commands need their own permissions**, and none of them belongs
+  to a preset:
+
+  | Command | Delegated permission |
+  |---|---|
+  | `teams calendar list` (your own), `show`, `search` | `Calendars.Read` |
+  | `teams calendar list --user <colleague>` | `Calendars.Read.Shared` |
+  | `teams calendar list --chat`, and the chat line of `show` | `OnlineMeetings.Read` |
+  | the calendar writes (`create`, `update`, `accept`, `tentative`, `decline`, `cancel`, `delete`) | `Calendars.ReadWrite` |
+
+  Add `Calendars.Read` and `Calendars.Read.Shared` to read calendars, plus
+  `Calendars.ReadWrite` if the calendar writes should work without a second
+  sign-in, and `OnlineMeetings.Read` for the Teams-meeting chat lookup.
+
+  They are deliberately **not** in a preset: adding a scope to one makes every
+  existing sign-in request it, and Entra consent is all-or-nothing per request,
+  so a profile that has not consented yet fails with `AADSTS65001`. Without them
+  here the CLI asks for them the first time a calendar command runs, on a
+  terminal.
+- The reference does not mark any calendar scope as requiring admin consent, but
+  some tenants block user consent anyway. If a calendar command fails with a
+  consent error, send an admin the request from
+  `teams auth status --admin-request`.
 
 Then click **Grant admin consent** (or send the request to an admin).
 

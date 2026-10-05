@@ -156,6 +156,51 @@ var routes = []Route{
 	{"PUT", "/drives/{drive-id}/items/{driveItem-id}/content", "driveitem-put-content.md"},
 	{"POST", "/drives/{drive-id}/items/{driveItem-id}/createUploadSession", "driveitem-createuploadsession.md"},
 	{"POST", "/drives/{drive-id}/items/{driveItem-id}/createLink", "driveitem-createlink.md"},
+
+	// Calendar (PLAN.md Phase 6; refs/INDEX.md "Calendar").
+	//
+	// Only routes the api-reference documents *and* Microsoft's OpenAPI
+	// description declares can be committed, and the calendar surface is the
+	// worst case of that in the whole CLI. The two sources disagree about the
+	// calendarView path, and the handoff's live run (plans/calendar.md §3)
+	// settles which one the service answers:
+	//
+	//   - the api-reference page documents /me/calendar/calendarView and
+	//     /users/{id}/calendar/calendarView, and NOT the /me/calendarView and
+	//     /users/{id}/calendarView spellings the handoff lists as verified live
+	//     (refs/graph/api-reference/v1.0/api/calendar-list-calendarview.md:30-33);
+	//   - the OpenAPI description declares /users/{user-id}/calendarView and
+	//     /users/{user-id}/calendar/calendarView, but no /me/calendarView at all.
+	//
+	// So the /users spelling here is the documented one (the CLI asks for
+	// another user's calendar that way), while the signed-in user's own
+	// /me/calendarView cannot be committed at all: no page documents that exact
+	// shape and the description does not declare it. Neither can
+	// /me/calendar/getSchedule or /me/onlineMeetings. The fake serves all three —
+	// they are what the live service answers — and fakegraph's contract hook
+	// skips them explicitly (isCalendarPathOutsideSpec). The api-reference check
+	// below still proves each one is documented on the page it cites.
+	//
+	// The event routes are cleaner: event-get/update/delete and the four
+	// responses all document the /me/events/{event-id} spelling, which the
+	// description also declares, so they are validated end to end. Create is
+	// documented as POST /me/calendar/events — not the POST /me/events the handoff
+	// quotes — and the description declares that path too, so it is committed
+	// (refs/graph/api-reference/v1.0/api/calendar-post-events.md:12).
+	//
+	// The four responses answer 204 here while the live service answered 202
+	// (plans/calendar.md §3, F10): the description declares 204, and it is the
+	// contract test that keeps the fake honest, so the fake follows the
+	// description. The CLI only requires a 2xx.
+	{"GET", "/users/{user-id}/calendar/calendarView", "calendar-list-calendarview.md"},
+	{"GET", "/me/events/{event-id}", "event-get.md"},
+	{"POST", "/me/calendar/events", "calendar-post-events.md"},
+	{"PATCH", "/me/events/{event-id}", "event-update.md"},
+	{"DELETE", "/me/events/{event-id}", "event-delete.md"},
+	{"POST", "/me/events/{event-id}/accept", "event-accept.md"},
+	{"POST", "/me/events/{event-id}/tentativelyAccept", "event-tentativelyaccept.md"},
+	{"POST", "/me/events/{event-id}/decline", "event-decline.md"},
+	{"POST", "/me/events/{event-id}/cancel", "event-cancel.md"},
 }
 
 // Routes returns the committed route list as "METHOD /path" lines, sorted by

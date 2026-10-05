@@ -29,6 +29,13 @@ type userRec struct {
 	mobilePhone                                             string
 	relevance                                               float64
 	order                                                   int
+	// noMailbox marks a user without an Exchange Online mailbox, which the
+	// calendar routes answer 404 MailboxNotEnabledForRESTAPI (and a 5016
+	// schedule error) for (plans/calendar.md §3, F4 and F7).
+	noMailbox bool
+	// onlineMeetingProviders is the mailbox's allowedOnlineMeetingProviders,
+	// which GET /me/calendar reports (plans/calendar.md §3, F10).
+	onlineMeetingProviders []string
 }
 
 type memberRec struct {
@@ -159,6 +166,17 @@ type store struct {
 	// uploads holds the in-flight upload sessions (handlers_files.go).
 	uploads map[string]*uploadSession
 
+	// calEvents are the seeded calendar events in seed order, and
+	// calByOwner indexes them by mailbox owner (handlers_calendar.go).
+	calEvents  []*eventRec
+	calByOwner map[string][]*eventRec
+	// calAccess says how the signed-in user may see another user's calendar
+	// (Model.CalendarAccess).
+	calAccess map[string]string
+	// staleHits are search-index entries whose event no longer exists
+	// (Model.StaleSearchHits).
+	staleHits []StaleSearchHit
+
 	// nextSeq orders messages across every container; it makes the default
 	// (deliberately unsorted) chat-message order and the search result order
 	// deterministic.
@@ -175,6 +193,8 @@ func newStore(model Model, tenant string, membersExpandCap int) *store {
 		teams:            map[string]*teamRec{},
 		chats:            map[string]*chatRec{},
 		drives:           map[string]*driveRec{},
+		calByOwner:       map[string][]*eventRec{},
+		calAccess:        map[string]string{},
 		myDrive:          model.MyDriveID,
 		nextID:           idBase,
 	}
@@ -205,6 +225,13 @@ func (s *store) seedLocked(m Model) {
 	for _, d := range m.Drives {
 		s.addDriveLocked(d)
 	}
+	for _, ev := range m.CalendarEvents {
+		s.addEventLocked(ev)
+	}
+	for owner, access := range m.CalendarAccess {
+		s.calAccess[owner] = access
+	}
+	s.staleHits = append([]StaleSearchHit(nil), m.StaleSearchHits...)
 	if s.myDrive == "" {
 		s.myDrive = m.MyDriveID
 	}
@@ -230,22 +257,30 @@ func (s *store) mergeUserLocked(dst *userRec, u User) {
 	if u.Relevance != 0 {
 		dst.relevance = u.Relevance
 	}
+	if u.NoMailbox {
+		dst.noMailbox = true
+	}
+	if len(u.OnlineMeetingProviders) > 0 {
+		dst.onlineMeetingProviders = append([]string(nil), u.OnlineMeetingProviders...)
+	}
 }
 
 func (s *store) addUserLocked(u User) {
 	rec := &userRec{
-		id:                u.ID,
-		displayName:       u.DisplayName,
-		givenName:         u.GivenName,
-		surname:           u.Surname,
-		upn:               u.UserPrincipalName,
-		mail:              u.Mail,
-		jobTitle:          u.JobTitle,
-		department:        u.Department,
-		officeLocation:    u.OfficeLocation,
-		preferredLanguage: u.PreferredLanguage,
-		relevance:         u.Relevance,
-		order:             len(s.userOrder),
+		id:                     u.ID,
+		displayName:            u.DisplayName,
+		givenName:              u.GivenName,
+		surname:                u.Surname,
+		upn:                    u.UserPrincipalName,
+		mail:                   u.Mail,
+		jobTitle:               u.JobTitle,
+		department:             u.Department,
+		officeLocation:         u.OfficeLocation,
+		preferredLanguage:      u.PreferredLanguage,
+		relevance:              u.Relevance,
+		noMailbox:              u.NoMailbox,
+		onlineMeetingProviders: append([]string(nil), u.OnlineMeetingProviders...),
+		order:                  len(s.userOrder),
 	}
 	if rec.displayName == "" {
 		rec.displayName = rec.id
