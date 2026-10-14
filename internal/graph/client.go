@@ -52,6 +52,13 @@ type TokenSource interface {
 	Token(ctx context.Context) (string, error)
 }
 
+// ClaimsTokenSource is a TokenSource that can answer a claims challenge: a new token requested with the claims a 401
+// from continuous access evaluation carried (internal/auth implements it). The cached token is then not used.
+type ClaimsTokenSource interface {
+	TokenSource
+	TokenWithClaims(ctx context.Context, claims string) (string, error)
+}
+
 // TokenSourceFunc adapts a function to TokenSource.
 type TokenSourceFunc func(ctx context.Context) (string, error)
 
@@ -291,6 +298,8 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 		lastErr  error
 		resp     *Response
 		attempts = c.maxRetries + 1
+		// a CAE claims challenge is answered once per call, without waiting: the token was revoked, not throttled
+		challenged bool
 	)
 	for attempt := range attempts {
 		if attempt > 0 {
@@ -304,6 +313,16 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 			}
 		}
 		resp, lastErr = c.attempt(ctx, req, urlStr, bodyBytes)
+		if claims := challengeClaims(lastErr); claims != "" && !challenged && !req.PreAuthorized {
+			if cts, ok := c.token.(ClaimsTokenSource); ok {
+				challenged = true
+				c.logf("%s %s: the token was revoked (claims challenge); requesting a new one", req.Method, req.DisplayPath())
+				if _, err := cts.TokenWithClaims(ctx, claims); err != nil {
+					return nil, fmt.Errorf("%w (a new token for the claims challenge failed too: %w)", lastErr, err)
+				}
+				resp, lastErr = c.attempt(ctx, req, urlStr, bodyBytes)
+			}
+		}
 		if lastErr == nil {
 			return resp, nil
 		}
@@ -539,4 +558,13 @@ func WithHeader(key, value string) RequestOption {
 // WithBody replaces the request body (used by raw `teams api` calls).
 func WithBody(body any) RequestOption {
 	return func(r *Request) { r.Body = body }
+}
+
+// challengeClaims is the claims of a 401 claims challenge in err, or "".
+func challengeClaims(err error) string {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
+		return apiErr.Claims
+	}
+	return ""
 }

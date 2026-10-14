@@ -474,3 +474,51 @@ func TestLoginIsRefusedWithoutATerminal(t *testing.T) {
 		t.Errorf("hint = %q", output.HintOf(err))
 	}
 }
+
+// A claims challenge (continuous access evaluation revoked the token) must not be answered from the cache: the
+// cached token is still unexpired, which is exactly what Graph rejected.
+func TestTokenWithClaimsBypassesTheCachedToken(t *testing.T) {
+	env := newIDPEnv(t, []string{"User.Read"}, 3600)
+	ctx := context.Background()
+	if _, err := env.client.Login(ctx, LoginOptions{Device: true}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(ctx, env.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := second.Token(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(env.idp.ConsumedRefreshTokens()); n != 0 {
+		t.Fatalf("a fresh cached token was refreshed (%d)", n)
+	}
+	claims := `{"access_token":{"nbf":{"essential":true,"value":"1791960000"}}}`
+	fresh, err := second.TokenWithClaims(ctx, claims)
+	if err != nil {
+		t.Fatalf("TokenWithClaims: %v", err)
+	}
+	if fresh == old || fresh == "" {
+		t.Fatal("the revoked token came back")
+	}
+	if len(env.idp.ConsumedRefreshTokens()) == 0 {
+		t.Error("the refresh token was not redeemed")
+	}
+	if again, err := second.Token(ctx); err != nil || again != fresh {
+		t.Errorf("later calls don't use the new token: %v", err)
+	}
+}
+
+func TestTokenWithClaimsNeedsALoginWhenTheRefreshTokenIsRevokedToo(t *testing.T) {
+	env := newIDPEnv(t, []string{"User.Read"}, 3600)
+	ctx := context.Background()
+	if _, err := env.client.Login(ctx, LoginOptions{Device: true}); err != nil {
+		t.Fatal(err)
+	}
+	env.idp.SetErrors(fakeidp.Errors{Refresh: fakeidp.InvalidGrant()})
+	_, err := env.client.TokenWithClaims(ctx, `{"access_token":{"nbf":{"essential":true,"value":"1"}}}`)
+	if err == nil || output.CodeOf(err) != output.CodeAuth {
+		t.Fatalf("err = %v (code %d), want an auth error", err, output.CodeOf(err))
+	}
+}
