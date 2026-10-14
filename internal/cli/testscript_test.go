@@ -92,8 +92,9 @@ func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: filepath.Join("testdata", "script"),
 		Setup: func(e *testscript.Env) error {
+			now := clock()
 			graph := fakegraph.NewServer(fakegraph.Options{
-				Model: scriptsModel(clock()),
+				Model: scriptsModel(now),
 				// Layer 6: every request and response these scripts produce is
 				// checked against the trimmed Graph OpenAPI description.
 				Contract: fakegraph.WithContract(t),
@@ -124,6 +125,9 @@ func TestScripts(t *testing.T) {
 			// The calendar scripts need the Phase 6 read scopes, which no
 			// preset carries.
 			e.Setenv("TEAMS_TEST_CALENDAR_TOKEN", scriptsCalendarToken())
+			// The Tokyo day the calendar seed uses: a script that names a date uses this one, never a
+			// fixed date, which only matched the seed on the day it was written.
+			e.Setenv("TEAMS_TEST_TOKYO_DATE", scriptsTokyoDate(now))
 			e.Setenv("TEAMS_TEST_CALENDAR_NOCHAT_TOKEN", scriptsTokenWith(scriptsCalendarNoChatScopes))
 			e.Setenv("TEAMS_TEST_READ_TOKEN", scriptsTokenWith(scriptsToken))
 			e.Setenv("TEAMS_TEST_CALENDAR_ONLY_TOKEN", scriptsTokenWith(scriptsCalendarOnlyScopes))
@@ -485,3 +489,12 @@ func scriptsTokenWith(scp string) string {
 // ensureUTF8 is a compile-time guard that the seed's HTML carries no invalid
 // runes, which would make the scripted output depend on the locale.
 var _ = func() bool { return utf8.ValidString(scriptsToken) }
+
+// scriptsTokyoDate is now's date in Tokyo, the day calendarScriptEvents seeds.
+func scriptsTokyoDate(now time.Time) string {
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		panic("Asia/Tokyo is unavailable: " + err.Error())
+	}
+	return now.In(tokyo).Format("2006-01-02")
+}

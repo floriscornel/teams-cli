@@ -90,10 +90,12 @@ exec teams calendar list --tz America/New_York
 ! stdout '\+09:00'
 exec teams calendar list --tz Europe/Amsterdam --date tomorrow --days 1 --json --jq 'length'
 stdout '^0$|^1$'
-exec teams calendar list --tz America/New_York --date 2026-10-05 --json --jq '.[].start'
-stdout 'T(20:00:00|09:00:00)-04:00$|^$'
-exec teams calendar list --date 2026-10-05 --tz Europe/Amsterdam --json --jq '[.[] | select(.subject == "Standup")][0].start'
-stdout 'T02:00:00\+02:00$' 
+# The seeded day is named by TEAMS_TEST_TOKYO_DATE (a fixed date matched the seed only once). Both summer and
+# winter offsets are accepted: the run may fall on either side of a clock change.
+exec teams calendar list --tz America/New_York --date $TEAMS_TEST_TOKYO_DATE --json --jq '.[].start'
+! stdout '\+0[0-9]:00$'
+exec teams calendar list --date $TEAMS_TEST_TOKYO_DATE --tz Europe/Amsterdam --json --jq '[.[] | select(.subject == "Standup")][0].start'
+stdout 'T(02:00:00\+02:00|01:00:00\+01:00)$' 
 
 # --include-cancelled adds the cancelled row back.
 exec teams calendar list --include-cancelled
@@ -116,7 +118,8 @@ stderr 'is not a known IANA time zone'
 stderr '--from needs --to'
 ! exec teams calendar list --to fri
 stderr '--to needs --from'
-! exec teams calendar list --from fri --to mon
+# (a reversed range, whatever weekday the run lands on: "fri" to "mon" only went backwards on some days)
+! exec teams calendar list --from tomorrow --to yesterday
 stderr 'is before'
 ! exec teams calendar list --days 0
 stderr '--days must be at least 1'
