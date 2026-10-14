@@ -43,8 +43,8 @@ GOCACHE = "{{ env.GOCACHE | default(value=config_root ~ '/.cache/go-build') }}"
 # tool only where a job actually releases or scans.
 # ---------------------------------------------------------------------------
 [tools]
-go = "1.27.1"
-golangci-lint = "2.13.2"
+go = "1.27.2"
+golangci-lint = "2.14.0"
 
 # ---------------------------------------------------------------------------
 # Development

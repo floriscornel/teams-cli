@@ -1,6 +1,6 @@
 module github.com/floriscornel/teams-cli
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1
@@ -20,7 +20,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/yuin/goldmark v1.8.2
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.60.0
 	golang.org/x/term v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
