@@ -2,6 +2,7 @@ package graph
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -41,7 +42,11 @@ type APIError struct {
 	ClientRequestID string
 	// RetryAfter is the parsed Retry-After header (or the innerError value).
 	RetryAfter time.Duration
-	Header     http.Header
+	// Claims is the claims challenge of a 401 from continuous access evaluation (CAE): the token was revoked (a
+	// policy changed, the user's session was revoked…) and a new one must be requested with these claims
+	// (refs/entra/docs/identity-platform/claims-challenge.md). Decoded JSON; empty when there is none.
+	Claims string
+	Header http.Header
 	// Body is the raw response body for `-v` diagnostics and tests. It may
 	// contain message content, so it is never printed by default.
 	Body []byte
@@ -192,7 +197,37 @@ func parseAPIError(method, url string, resp *http.Response, body []byte) *APIErr
 	if e.RetryAfter == 0 {
 		e.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
 	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		e.Claims = claimsChallenge(resp.Header.Values("WWW-Authenticate"))
+	}
 	return e
+}
+
+// claimsChallenge reads the claims of a CAE challenge:
+//
+//	WWW-Authenticate: Bearer authorization_uri="…", error="insufficient_claims", claims="eyJhY2Nlc3NfdG9rZW4i…"
+//
+// The claims value is base64 of a JSON object (padded or not); anything else gives "".
+func claimsChallenge(headers []string) string {
+	for _, h := range headers {
+		if !strings.Contains(h, `error="insufficient_claims"`) {
+			continue
+		}
+		_, rest, ok := strings.Cut(h, `claims="`)
+		if !ok {
+			continue
+		}
+		raw, _, ok := strings.Cut(rest, `"`)
+		if !ok {
+			continue
+		}
+		for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+			if b, err := enc.DecodeString(raw); err == nil && json.Valid(b) {
+				return string(b)
+			}
+		}
+	}
+	return ""
 }
 
 // parseRetryAfter handles the documented integer-seconds form and, defensively,

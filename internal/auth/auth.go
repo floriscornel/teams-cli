@@ -517,6 +517,39 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 	return res.AccessToken, nil
 }
 
+// TokenWithClaims implements graph.ClaimsTokenSource: Graph revoked the token through continuous access evaluation
+// (a policy change, a revoked session) and answered a 401 with a claims challenge. The cached access token must not
+// be used again: a silent acquisition with the claims bypasses it and redeems the refresh token, which mints a token
+// under the current policies (refs/entra/docs/identity-platform/claims-challenge.md). When the refresh token itself
+// is no longer accepted, this fails as an interaction-required error and `teams auth login` is the fix.
+func (c *Client) TokenWithClaims(ctx context.Context, claims string) (string, error) {
+	if c.Static() {
+		return "", output.WithHint(
+			output.Authf("Graph revoked TEAMS_ACCESS_TOKEN (claims challenge)"),
+			"provide a new token, or unset TEAMS_ACCESS_TOKEN to use the cached account",
+		)
+	}
+	c.mu.Lock()
+	c.cached = nil
+	c.mu.Unlock()
+	accounts, err := c.Accounts(ctx)
+	if err != nil {
+		return "", err
+	}
+	account, err := c.pickAccount(accounts)
+	if err != nil {
+		return "", err
+	}
+	res, err := c.msal.AcquireTokenSilent(ctx, c.eff.Scopes, public.WithSilentAccount(account), public.WithClaims(claims))
+	if err != nil {
+		return "", Classify(err, c.eff.Name)
+	}
+	if _, err := c.finish(res); err != nil {
+		return res.AccessToken, err
+	}
+	return res.AccessToken, nil
+}
+
 // GrantedScopes returns the scopes the current token carries. The `scp` claim
 // lists every consented scope, so this is the feature matrix with no extra
 // probing (PLAN.md:66).
